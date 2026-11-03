@@ -1,0 +1,6 @@
+# Core runtime dependency. Pin a recent, stable httpx.
+httpx==0.27.2
+
+# Only needed if you implement SPOOLEASE_MODE=encrypted (reading the stock AES-GCM blob).
+# Left commented because phase-1 (SPOOLEASE_MODE=json) does not need it.
+# cryptography==43.0.1

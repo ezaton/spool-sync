@@ -1,0 +1,25 @@
+# Example: run the bridge next to an existing Spoolman. Spoolman itself is UNCHANGED.
+services:
+  spoolman:
+    image: ghcr.io/donkie/spoolman:latest
+    restart: unless-stopped
+    volumes:
+      - ./spoolman-data:/home/app/.local/share/spoolman
+    ports:
+      - "7912:8000"
+
+  sync-bridge:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - spoolman
+    environment:
+      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLEASE_URL: http://192.168.1.50      # <-- your SpoolEase console IP
+      SPOOLEASE_MODE: json
+      SPOOLEASE_TOKEN: change-me
+      SYNC_INTERVAL_SECONDS: "30"
+      DRY_RUN: "false"
+      STATE_PATH: /state/spoolsync.sqlite
+    volumes:
+      - ./sync-state:/state                    # the sync bookkeeping (id map + hashes)
