@@ -5,18 +5,18 @@ version: '3.8'
 
 services:
   spoolsync:
-    # Replace 'yourusername' with your Docker Hub username
-    image: yourusername/spoolsync:latest
+    # Replace 'etzion' with your Docker Hub username
+    image: etzion/spoolsync:latest
 
     container_name: spoolsync
     restart: unless-stopped
 
     environment:
-      # Spoolman API (adjust if different)
+      # Spoolman API (use 'spoolman' if using service name, or actual address)
       SPOOLMAN_URL: http://spoolman:8000/api/v1
 
-      # Your SpoolEase device IP
-      SPOOLEASE_URL: http://192.168.0.120
+      # Your SpoolEase device IP (replace with actual IP address)
+      SPOOLEASE_URL: http://<spoolease_address>
 
       # Encrypted mode (works with current SpoolEase firmware)
       SPOOLEASE_MODE: encrypted

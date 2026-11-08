@@ -27,7 +27,7 @@ nano docker-compose.yml
 ### 3. Update Configuration
 
 **Required changes:**
-- Replace `yourusername/spoolsync:latest` with your Docker Hub username
+- Replace `etzion/spoolsync:latest` with your Docker Hub username
 - Set `SPOOLEASE_URL` to your SpoolEase device IP
 - Set `SPOOLEASE_SECURITY_KEY` to your device's security key
 
@@ -60,10 +60,10 @@ services:
       - spoolman-data:/home/app/.local/share/spoolman
 
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: encrypted
       SPOOLEASE_SECURITY_KEY: "123456"
     volumes:
@@ -88,11 +88,11 @@ If you already have Spoolman running:
 ```yaml
 services:
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     network_mode: "container:spoolman"  # Share Spoolman's network
     environment:
-      SPOOLMAN_URL: http://localhost:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: encrypted
       SPOOLEASE_SECURITY_KEY: "123456"
 ```
@@ -113,10 +113,10 @@ docker-compose -f docker-compose.simple.yml up -d
 ```yaml
 services:
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: json                # JSON mode required
       SPOOLEASE_TOKEN: "your-token"       # Token for endpoint
       TWO_WAY_SYNC: "true"                # Enable Phase 2
@@ -133,8 +133,8 @@ docker-compose -f docker-compose.phase2.yml up -d
 
 | Variable | Example | Description |
 |----------|---------|-------------|
-| `SPOOLMAN_URL` | `http://spoolman:8000/api/v1` | Spoolman API endpoint |
-| `SPOOLEASE_URL` | `http://192.168.0.120` | SpoolEase device IP |
+| `SPOOLMAN_URL` | `http://<spoolman_address>/api/v1` | Spoolman API endpoint |
+| `SPOOLEASE_URL` | `http://<spoolease_address>` | SpoolEase device IP |
 | `SPOOLEASE_MODE` | `encrypted` or `json` | Connection mode |
 | `SPOOLEASE_SECURITY_KEY` | `123456` | For encrypted mode |
 | `SPOOLEASE_TOKEN` | `your-token` | For JSON mode |
@@ -180,7 +180,7 @@ services:
   spoolsync:
     network_mode: "container:spoolman"
     environment:
-      SPOOLMAN_URL: http://localhost:8000/api/v1
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
 ```
 
 ### Option 3: External Network
@@ -249,7 +249,7 @@ docker-compose logs -f spoolsync
 ```yaml
 services:
   spoolsync:
-    image: yourusername/spoolsync:v2.0.0  # Specific version
+    image: etzion/spoolsync:v2.0.0  # Specific version
 ```
 
 ## Monitoring
@@ -316,19 +316,19 @@ docker-compose logs spoolsync
 
 **Test connectivity:**
 ```bash
-docker-compose exec spoolsync curl http://192.168.0.120/api/spools
+docker-compose exec spoolsync curl http://<spoolease_address>/api/spools
 ```
 
 **Fixes:**
 - Verify SpoolEase IP address
 - Check device is on same network
-- Test from host: `curl http://192.168.0.120/api/spools`
+- Test from host: `curl http://<spoolease_address>/api/spools`
 
 ### Can't Connect to Spoolman
 
 **Test connectivity:**
 ```bash
-docker-compose exec spoolsync curl http://spoolman:8000/api/v1/health
+docker-compose exec spoolsync curl http://<spoolman_address>/api/v1/health
 ```
 
 **Fixes:**
@@ -381,11 +381,11 @@ services:
           memory: 512M
 
   spoolsync:
-    image: yourusername/spoolsync:v2.0.0  # Use specific version
+    image: etzion/spoolsync:v2.0.0  # Use specific version
     restart: always
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: encrypted
       SPOOLEASE_SECURITY_KEY: "${SPOOLEASE_KEY}"  # From .env file
       LOG_LEVEL: WARNING  # Less verbose in production
@@ -403,9 +403,9 @@ services:
 ```bash
 # Create .env file
 cat > .env << EOF
-SPOOLEASE_URL=http://192.168.0.120
+SPOOLEASE_URL=http://<spoolease_address>
 SPOOLEASE_KEY=123456
-SPOOLMAN_URL=http://spoolman:8000/api/v1
+SPOOLMAN_URL=http://<spoolman_address>/api/v1
 EOF
 
 # Reference in docker-compose.yml
@@ -439,10 +439,10 @@ services:
     volumes: [spoolman-data:/home/app/.local/share/spoolman]
 
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: encrypted
       SPOOLEASE_SECURITY_KEY: "123456"
 ```
@@ -453,19 +453,19 @@ services:
 # Sync multiple SpoolEase devices to one Spoolman
 services:
   spoolsync-printer1:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_SECURITY_KEY: "key1"
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
     volumes: [sync-printer1:/state]
 
   spoolsync-printer2:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
       SPOOLEASE_URL: http://192.168.0.121
       SPOOLEASE_SECURITY_KEY: "key2"
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
     volumes: [sync-printer2:/state]
 ```
 
@@ -475,10 +475,10 @@ services:
 # SpoolSync connects to remote Spoolman
 services:
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
       SPOOLMAN_URL: https://spoolman.example.com/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: encrypted
       SPOOLEASE_SECURITY_KEY: "123456"
 ```

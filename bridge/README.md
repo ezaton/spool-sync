@@ -58,10 +58,10 @@ docker-compose -f docker-compose.local.yml up -d
 ```yaml
 services:
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: encrypted
       SPOOLEASE_SECURITY_KEY: your-key
     volumes:
@@ -85,8 +85,8 @@ python -m spoolsync
 cd sync-tool/bridge
 docker build -t spoolsync .
 docker run -d \
-  -e SPOOLMAN_URL=http://spoolman:8000/api/v1 \
-  -e SPOOLEASE_URL=http://192.168.0.120 \
+  -e SPOOLMAN_URL=http://<spoolman_address>/api/v1 \
+  -e SPOOLEASE_URL=http://<spoolease_address> \
   -e SPOOLEASE_MODE=encrypted \
   -e SPOOLEASE_SECURITY_KEY=your-key \
   -v spoolsync-state:/state \

@@ -16,7 +16,7 @@ services:
       - spoolsync-network
 
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     container_name: spoolsync
     restart: unless-stopped
 
@@ -26,7 +26,7 @@ services:
     environment:
       # ===== Basic Configuration =====
       SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLEASE_URL: http://<spoolease_address>
 
       # ===== JSON Mode (Required for Phase 2) =====
       SPOOLEASE_MODE: json

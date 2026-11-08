@@ -13,8 +13,8 @@ cp docker-compose.example.yml docker-compose.yml
 # 2. Edit configuration
 nano docker-compose.yml
 # Change these lines:
-#   - image: yourusername/spoolsync:latest
-#   - SPOOLEASE_URL: http://192.168.0.120  (your SpoolEase IP)
+#   - image: etzion/spoolsync:latest
+#   - SPOOLEASE_URL: http://<spoolease_address>  (your SpoolEase IP)
 #   - SPOOLEASE_SECURITY_KEY: "123456"     (your device key)
 
 # 3. Start services
@@ -29,7 +29,7 @@ open http://localhost:7912
 
 **You should see:**
 ```
-INFO    spoolsync starting: SpoolEase=http://192.168.0.120 -> Spoolman=...
+INFO    spoolsync starting: SpoolEase=http://<spoolease_address> -> Spoolman=...
 INFO    loaded 34 material densities from Spoolman external DB
 INFO    reconcile: {'created': 137, 'updated': 0, ...}
 ```
@@ -45,8 +45,8 @@ cp docker-compose.simple.yml docker-compose.yml
 # 2. Edit configuration
 nano docker-compose.yml
 # Change:
-#   - image: yourusername/spoolsync:latest
-#   - SPOOLEASE_URL: http://192.168.0.120
+#   - image: etzion/spoolsync:latest
+#   - SPOOLEASE_URL: http://<spoolease_address>
 #   - SPOOLEASE_SECURITY_KEY: "123456"
 
 # 3. If Spoolman uses custom network:
@@ -73,8 +73,8 @@ cp docker-compose.phase2.yml docker-compose.yml
 # 3. Edit configuration
 nano docker-compose.yml
 # Change:
-#   - image: yourusername/spoolsync:latest
-#   - SPOOLEASE_URL: http://192.168.0.120
+#   - image: etzion/spoolsync:latest
+#   - SPOOLEASE_URL: http://<spoolease_address>
 #   - SPOOLEASE_TOKEN: "your-secure-token"
 #   - TWO_WAY_SYNC: "true"
 
@@ -140,8 +140,8 @@ After starting, verify everything works:
 ```bash
 # Add SPOOLMAN_URL and SPOOLEASE_URL to docker-compose.yml
 environment:
-  SPOOLMAN_URL: http://spoolman:8000/api/v1
-  SPOOLEASE_URL: http://192.168.0.120
+  SPOOLMAN_URL: http://<spoolman_address>/api/v1
+  SPOOLEASE_URL: http://<spoolease_address>
 ```
 
 ### Issue: "Connection refused" to SpoolEase
@@ -149,7 +149,7 @@ environment:
 **Fix:**
 ```bash
 # Test from host machine first
-curl http://192.168.0.120/api/spools
+curl http://<spoolease_address>/api/spools
 
 # If that works, it's a Docker networking issue
 # Try using host networking:
@@ -173,7 +173,7 @@ docker-compose up -d
 **Check:**
 ```bash
 # 1. Verify SpoolEase is accessible
-docker-compose exec spoolsync curl http://192.168.0.120/api/spools
+docker-compose exec spoolsync curl http://<spoolease_address>/api/spools
 
 # 2. Check security key is correct
 # Look for "InvalidTag" error in logs
@@ -189,8 +189,8 @@ docker-compose logs -f spoolsync
 ### Required Variables
 
 ```yaml
-SPOOLMAN_URL: http://spoolman:8000/api/v1  # Spoolman API
-SPOOLEASE_URL: http://192.168.0.120        # SpoolEase IP
+SPOOLMAN_URL: http://<spoolman_address>/api/v1  # Spoolman API
+SPOOLEASE_URL: http://<spoolease_address>        # SpoolEase IP
 SPOOLEASE_MODE: encrypted                  # or json
 SPOOLEASE_SECURITY_KEY: "123456"           # Your key
 ```

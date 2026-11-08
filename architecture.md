@@ -76,7 +76,7 @@ services:
   sync-bridge:
     build: ./sync-tool
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
       SPOOLEASE_URL: http://<device-ip>:80
       SPOOLEASE_SECURITY_KEY: <7-char>   # only if decrypting the blob
       SYNC_INTERVAL_SECONDS: "30"

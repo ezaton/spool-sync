@@ -50,12 +50,12 @@ record `id` as a fallback stored in a Spoolman `extra` field.
 ```bash
 docker run -d \
   --name spoolsync \
-  -e SPOOLMAN_URL=http://spoolman:8000/api/v1 \
-  -e SPOOLEASE_URL=http://192.168.0.120 \
+  -e SPOOLMAN_URL=http://spoolman_address/api/v1 \
+  -e SPOOLEASE_URL=http://spoolease_address \
   -e SPOOLEASE_MODE=encrypted \
   -e SPOOLEASE_SECURITY_KEY=your-6-char-key \
   -v spoolsync-state:/state \
-  yourusername/spoolsync:latest
+  etzion/spoolsync:latest
 ```
 
 **Docker Hub Setup**: See [DOCKER-SETUP.md](DOCKER-SETUP.md) for complete instructions on:

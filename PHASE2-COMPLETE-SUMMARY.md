@@ -175,7 +175,7 @@ SPOOLEASE_TOKEN=your-secure-token
 ```yaml
 services:
   spoolsync:
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
     environment:
       TWO_WAY_SYNC: "true"
       SPOOLEASE_MODE: "json"

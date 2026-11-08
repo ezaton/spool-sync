@@ -53,7 +53,7 @@ Add two secrets:
 
 Edit `bridge/docker-compose.yml` line 5:
 ```yaml
-image: yourusername/spoolsync:latest  # <-- Change 'yourusername'
+image: etzion/spoolsync:latest  # <-- Change 'etzion'
 ```
 
 ### Step 3: Commit and Push
@@ -86,15 +86,15 @@ git push origin v1.0.0
 1. **GitHub Actions triggers** when you push
 2. **Builds Docker image** for both architectures
 3. **Pushes to Docker Hub** as:
-   - `yourusername/spoolsync:latest`
-   - `yourusername/spoolsync:1.0.0` (if tagged)
-   - `yourusername/spoolsync:1.0`
-   - `yourusername/spoolsync:1`
+   - `etzion/spoolsync:latest`
+   - `etzion/spoolsync:1.0.0` (if tagged)
+   - `etzion/spoolsync:1.0`
+   - `etzion/spoolsync:1`
 
 4. **Users can pull and run**:
    ```bash
-   docker pull yourusername/spoolsync:latest
-   docker run -d -e SPOOLMAN_URL=... yourusername/spoolsync:latest
+   docker pull etzion/spoolsync:latest
+   docker run -d -e SPOOLMAN_URL=... etzion/spoolsync:latest
    ```
 
 ## Features Included in Phase 1

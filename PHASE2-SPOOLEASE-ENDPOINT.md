@@ -137,7 +137,7 @@ async fn extract_token(
 
 ```bash
 # Update note field
-curl -X POST http://192.168.0.120/api/spools/add-edit.json \
+curl -X POST http://<spoolease_address>/api/spools/add-edit.json \
   -H "Authorization: Bearer your-token" \
   -H "Content-Type: application/json" \
   -d '{"id": "178", "note": "Location: Shelf A | Updated from Spoolman"}'

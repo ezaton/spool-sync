@@ -3,8 +3,8 @@ version: '3.8'
 services:
   spoolsync:
     # Use published image from Docker Hub
-    # Replace 'yourusername' with your Docker Hub username
-    image: yourusername/spoolsync:latest
+    # Replace 'etzion' with your Docker Hub username
+    image: etzion/spoolsync:latest
 
     # Or build locally instead:
     # build:
@@ -16,8 +16,8 @@ services:
 
     environment:
       # Required
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://spoolman:8000/api/v1  # Use your Spoolman service name/address
+      SPOOLEASE_URL: http://<spoolease_address>  # Replace with your SpoolEase device IP
 
       # SpoolEase authentication
       SPOOLEASE_MODE: encrypted

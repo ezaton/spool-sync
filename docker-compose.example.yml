@@ -45,7 +45,7 @@ services:
   # SpoolSync - Bridge between SpoolEase and Spoolman
   spoolsync:
     # OPTION 1: Use published image from Docker Hub
-    image: yourusername/spoolsync:latest
+    image: etzion/spoolsync:latest
 
     # OPTION 2: Build locally from source
     # build:
@@ -62,11 +62,11 @@ services:
     environment:
       # ===== Required Configuration =====
 
-      # Spoolman API endpoint (use service name for Docker networking)
+      # Spoolman API endpoint (use 'spoolman' service name for Docker networking)
       SPOOLMAN_URL: http://spoolman:8000/api/v1
 
-      # SpoolEase device IP address (replace with your device IP)
-      SPOOLEASE_URL: http://192.168.0.120
+      # SpoolEase device IP address (replace with your device's actual IP)
+      SPOOLEASE_URL: http://<spoolease_address>
 
       # ===== SpoolEase Authentication =====
 

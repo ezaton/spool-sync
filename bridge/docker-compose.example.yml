@@ -14,7 +14,7 @@ services:
     depends_on:
       - spoolman
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
       SPOOLEASE_URL: http://192.168.1.50      # <-- your SpoolEase console IP
       SPOOLEASE_MODE: json
       SPOOLEASE_TOKEN: change-me

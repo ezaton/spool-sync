@@ -124,7 +124,7 @@ Follow [PHASE2-SPOOLEASE-ENDPOINT.md](PHASE2-SPOOLEASE-ENDPOINT.md)
 
 Test manually:
 ```bash
-curl -X POST http://192.168.0.120/api/spools/add-edit.json \
+curl -X POST http://<spoolease_address>/api/spools/add-edit.json \
   -H "Authorization: Bearer your-token" \
   -H "Content-Type: application/json" \
   -d '{"id": "178", "note": "Test location"}'
@@ -198,7 +198,7 @@ INFO    spoolsync.spoolman           websocket connected, listening for Spoolman
 
 **Fixes**:
 1. Check `TWO_WAY_SYNC=true` is set
-2. Verify SpoolEase endpoint exists: `curl -X POST http://192.168.0.120/api/spools/add-edit.json`
+2. Verify SpoolEase endpoint exists: `curl -X POST http://<spoolease_address>/api/spools/add-edit.json`
 3. Check SPOOLEASE_TOKEN matches
 4. Look for errors in logs: `failed to write to SpoolEase`
 

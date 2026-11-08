@@ -73,19 +73,19 @@ This will build and push with tags: `1.0.0`, `1.0`, `1`, and `latest`.
 
 ```bash
 # Pull latest version
-docker pull yourusername/spoolsync:latest
+docker pull etzion/spoolsync:latest
 
 # Or specific version
-docker pull yourusername/spoolsync:1.0.0
+docker pull etzion/spoolsync:1.0.0
 
 # Run
 docker run -d \
-  -e SPOOLMAN_URL=http://spoolman:8000/api/v1 \
-  -e SPOOLEASE_URL=http://192.168.0.120 \
+  -e SPOOLMAN_URL=http://<spoolman_address>/api/v1 \
+  -e SPOOLEASE_URL=http://<spoolease_address> \
   -e SPOOLEASE_MODE=encrypted \
   -e SPOOLEASE_SECURITY_KEY=123456 \
   -v spoolsync-state:/state \
-  yourusername/spoolsync:latest
+  etzion/spoolsync:latest
 ```
 
 ### With Docker Compose
@@ -95,10 +95,10 @@ Update `bridge/docker-compose.yml`:
 ```yaml
 services:
   spoolsync:
-    image: yourusername/spoolsync:latest  # <-- Change this
+    image: etzion/spoolsync:latest  # <-- Change this
     environment:
-      SPOOLMAN_URL: http://spoolman:8000/api/v1
-      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLMAN_URL: http://<spoolman_address>/api/v1
+      SPOOLEASE_URL: http://<spoolease_address>
       SPOOLEASE_MODE: encrypted
       SPOOLEASE_SECURITY_KEY: your-key
     volumes:
@@ -138,10 +138,10 @@ git push origin v1.0.1
 ```
 
 This creates multiple tags:
-- `yourusername/spoolsync:1.0.1` (exact version)
-- `yourusername/spoolsync:1.0` (minor version)
-- `yourusername/spoolsync:1` (major version)
-- `yourusername/spoolsync:latest` (if on main branch)
+- `etzion/spoolsync:1.0.1` (exact version)
+- `etzion/spoolsync:1.0` (minor version)
+- `etzion/spoolsync:1` (major version)
+- `etzion/spoolsync:latest` (if on main branch)
 
 ## Multi-Architecture Support
 
@@ -153,7 +153,7 @@ Users can pull the appropriate architecture automatically:
 
 ```bash
 # Docker automatically selects the right architecture
-docker pull yourusername/spoolsync:latest
+docker pull etzion/spoolsync:latest
 ```
 
 ## Troubleshooting
