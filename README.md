@@ -84,7 +84,15 @@ See [bridge/README.md](bridge/README.md) for detailed configuration.
   - Encrypted mode implemented (AES-GCM decryption)
   - 137 spools, 32 vendors synced successfully
   - Idempotent mapping with shadow state tracking
-- ⏳ **Phase 2**: Two-way sync (design complete, implementation pending)
+  - Docker Hub automated builds configured
+- ✅ **Phase 2 bridge complete**: Two-way sync implemented in bridge
+  - Websocket listener for real-time Spoolman changes
+  - Echo suppression to prevent sync loops
+  - Field ownership (only writes location/comment back)
+  - ⏳ **Requires SpoolEase POST endpoint** - see [PHASE2-SPOOLEASE-ENDPOINT.md](PHASE2-SPOOLEASE-ENDPOINT.md)
+  - Ready to test once endpoint is implemented
+
+**👉 See [PHASE2-README.md](PHASE2-README.md) for Phase 2 details and testing**
 - ✅ **Phase 1 bridge written** — one-way SpoolEase → Spoolman, in [bridge/](bridge/).
   ⚠️ Not yet executed (no Python/Docker on the authoring machine); run its tests and a
   `DRY_RUN=true` pass before trusting it. Needs the SpoolEase JSON endpoint

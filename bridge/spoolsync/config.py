@@ -58,6 +58,7 @@ class Config:
     archive_missing: bool  # SpoolEase record gone -> archive (not delete) in Spoolman
     state_path: str  # sqlite file for sync bookkeeping
     log_level: str
+    two_way_sync: bool  # Phase 2: enable Spoolman → SpoolEase write-back via websocket
 
     @staticmethod
     def from_env() -> "Config":
@@ -80,4 +81,5 @@ class Config:
             archive_missing=_get_bool("ARCHIVE_MISSING", True),
             state_path=_get("STATE_PATH", "/state/spoolsync.sqlite") or "/state/spoolsync.sqlite",
             log_level=_get("LOG_LEVEL", "INFO") or "INFO",
+            two_way_sync=_get_bool("TWO_WAY_SYNC", False),  # Phase 2: disabled by default
         )

@@ -166,3 +166,56 @@ class SpoolmanClient:
 
     def archive_spool(self, spool_id: int) -> None:
         self._write("PATCH", f"/spool/{spool_id}", {"archived": True})
+
+    # --- Phase 2: Websocket listener for real-time changes ---
+    async def listen_websocket(self, on_event_callback):
+        """Listen to Spoolman websocket for real-time spool updates.
+
+        Connects to ws://{base}/spool and calls on_event_callback for each event.
+        Event format: {type: 'added'|'updated'|'deleted', resource: 'spool', payload: {...}}
+
+        This is meant to run in a background task. Automatically reconnects on disconnect.
+        """
+        import asyncio
+        import json
+        import websockets
+
+        # Convert http://host:port/api/v1 to ws://host:port/api/v1/spool
+        ws_url = self._base.replace("http://", "ws://").replace("https://", "wss://") + "/spool"
+
+        retry_delay = 1.0
+        max_retry_delay = 60.0
+
+        while True:
+            try:
+                log.info("connecting to Spoolman websocket: %s", ws_url)
+                async with websockets.connect(ws_url, ping_interval=30, ping_timeout=10) as websocket:
+                    log.info("websocket connected, listening for Spoolman changes...")
+                    retry_delay = 1.0  # Reset on successful connection
+
+                    async for message in websocket:
+                        try:
+                            event = json.loads(message)
+                            # Call the callback with the event
+                            await on_event_callback(event)
+                        except json.JSONDecodeError:
+                            log.warning("invalid JSON from websocket: %s", message[:100])
+                        except Exception as e:
+                            log.exception("error processing websocket event: %s", e)
+
+            except websockets.exceptions.WebSocketException as e:
+                log.warning("websocket disconnected: %s, reconnecting in %.1fs...", e, retry_delay)
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_retry_delay)
+            except Exception as e:
+                log.exception("unexpected websocket error: %s", e)
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_retry_delay)
+
+    def get_spool(self, spool_id: int) -> dict | None:
+        """Fetch a single spool by ID."""
+        try:
+            return self._get(f"/spool/{spool_id}").json()
+        except httpx.HTTPError as e:
+            log.warning("failed to fetch spool %d: %s", spool_id, e)
+            return None

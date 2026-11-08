@@ -42,6 +42,50 @@ class SpooleaseClient:
             return self._fetch_encrypted()
         raise ValueError(f"Unknown SPOOLEASE_MODE: {self._mode!r}")
 
+    def write_record(self, record_id: str, updates: dict) -> bool:
+        """Phase 2: Write Spoolman-owned fields back to SpoolEase.
+
+        Updates should only include fields that Spoolman owns:
+        - location (maps to note field)
+        - price (not currently mapped)
+        - archived (not currently supported in SpoolEase)
+        - comment (maps to note field)
+
+        Returns True on success, False on failure.
+        """
+        if self._mode != "json":
+            log.warning("write_record requires SPOOLEASE_MODE=json; skipping write to SpoolEase")
+            return False
+
+        # Map Spoolman fields to SpoolEase fields
+        # Currently, we map location/comment to the 'note' field
+        # This is a limitation - SpoolEase doesn't have separate location/comment fields
+        payload = {"id": record_id}
+
+        if "location" in updates or "comment" in updates:
+            # Combine location and comment into note field
+            parts = []
+            if "location" in updates and updates["location"]:
+                parts.append(f"Location: {updates['location']}")
+            if "comment" in updates and updates["comment"]:
+                parts.append(updates["comment"])
+            if parts:
+                payload["note"] = " | ".join(parts)
+
+        if not payload or len(payload) == 1:  # Only has 'id'
+            log.debug("no writable fields to update for SpoolEase record %s", record_id)
+            return True
+
+        try:
+            log.info("writing back to SpoolEase record %s: %s", record_id, payload)
+            r = self._http.post("/api/spools/add-edit.json", json=payload)
+            r.raise_for_status()
+            log.debug("successfully updated SpoolEase record %s", record_id)
+            return True
+        except httpx.HTTPError as e:
+            log.error("failed to write to SpoolEase record %s: %s", record_id, e)
+            return False
+
     def _fetch_json(self) -> list[SpoolRecord]:
         r = self._http.get("/api/spools.json")
         r.raise_for_status()

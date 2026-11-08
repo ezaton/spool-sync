@@ -3,3 +3,6 @@ httpx==0.27.2
 
 # For SPOOLEASE_MODE=encrypted (reading the stock AES-GCM blob).
 cryptography==43.0.1
+
+# For Phase 2: Spoolman websocket listener (real-time two-way sync)
+websockets==12.0
