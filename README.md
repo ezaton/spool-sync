@@ -43,11 +43,48 @@ Ownership is **per-field**, not global:
 Cross-system join key: **the RFID tag UID** (both sides have it), with the SpoolEase
 record `id` as a fallback stored in a Spoolman `extra` field.
 
+## Quick Start
+
+### Using Docker (Recommended)
+
+```bash
+docker run -d \
+  --name spoolsync \
+  -e SPOOLMAN_URL=http://spoolman:8000/api/v1 \
+  -e SPOOLEASE_URL=http://192.168.0.120 \
+  -e SPOOLEASE_MODE=encrypted \
+  -e SPOOLEASE_SECURITY_KEY=your-6-char-key \
+  -v spoolsync-state:/state \
+  yourusername/spoolsync:latest
+```
+
+**Docker Hub Setup**: See [DOCKER-SETUP.md](DOCKER-SETUP.md) for complete instructions on:
+- Setting up GitHub Actions for automated builds
+- Publishing to Docker Hub
+- Versioning and tagging strategy
+
+### Using Python Directly
+
+```bash
+cd bridge
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # Edit with your settings
+python -m spoolsync
+```
+
+See [bridge/README.md](bridge/README.md) for detailed configuration.
+
 ## Status
 
 - ✅ Design complete (the docs above).
 - ✅ Weight semantics **resolved** from the firmware (`weight_current` = gross scale
   reading; see [data-mapping.md](data-mapping.md#weight-semantics-resolved)).
+- ✅ **Phase 1 complete**: One-way sync SpoolEase → Spoolman working
+  - Encrypted mode implemented (AES-GCM decryption)
+  - 137 spools, 32 vendors synced successfully
+  - Idempotent mapping with shadow state tracking
+- ⏳ **Phase 2**: Two-way sync (design complete, implementation pending)
 - ✅ **Phase 1 bridge written** — one-way SpoolEase → Spoolman, in [bridge/](bridge/).
   ⚠️ Not yet executed (no Python/Docker on the authoring machine); run its tests and a
   `DRY_RUN=true` pass before trusting it. Needs the SpoolEase JSON endpoint

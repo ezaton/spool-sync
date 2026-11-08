@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  spoolsync:
+    # Use published image from Docker Hub
+    # Replace 'yourusername' with your Docker Hub username
+    image: yourusername/spoolsync:latest
+
+    # Or build locally instead:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    container_name: spoolsync
+    restart: unless-stopped
+
+    environment:
+      # Required
+      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLEASE_URL: http://192.168.0.120
+
+      # SpoolEase authentication
+      SPOOLEASE_MODE: encrypted
+      SPOOLEASE_SECURITY_KEY: your-6-or-7-char-key
+      # For JSON mode (when SpoolEase endpoint is implemented):
+      # SPOOLEASE_MODE: json
+      # SPOOLEASE_TOKEN: your-bearer-token
+
+      # Mapping defaults
+      DEFAULT_DIAMETER: "1.75"
+      DEFAULT_DENSITY: "1.24"
+
+      # Behavior
+      SYNC_INTERVAL_SECONDS: "30"
+      DRY_RUN: "false"
+      ARCHIVE_MISSING: "true"
+      STATE_PATH: /state/spoolsync.sqlite
+      LOG_LEVEL: INFO
+
+    volumes:
+      # Persist sync state (id mappings, hashes)
+      - spoolsync-state:/state
+
+    networks:
+      - spoolman-network
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  spoolsync-state:
+
+networks:
+  spoolman-network:
+    external: true
+    # If running with Spoolman, use its network:
+    # docker network connect spoolman_default spoolsync

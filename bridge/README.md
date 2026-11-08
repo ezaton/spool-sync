@@ -42,18 +42,56 @@ tests/
 
 ## Run it
 
-Local:
+### Option 1: Docker (Recommended)
+
+**Using published image from Docker Hub:**
+
+```bash
+cd sync-tool/bridge
+cp docker-compose.yml docker-compose.local.yml
+# Edit docker-compose.local.yml with your settings
+docker-compose -f docker-compose.local.yml up -d
+```
+
+**Or with Spoolman's existing docker-compose:**
+
+```yaml
+services:
+  spoolsync:
+    image: yourusername/spoolsync:latest
+    environment:
+      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLEASE_MODE: encrypted
+      SPOOLEASE_SECURITY_KEY: your-key
+    volumes:
+      - spoolsync-state:/state
+```
+
+### Option 2: Local Python
 
 ```bash
 cd sync-tool/bridge
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env            # edit SPOOLMAN_URL / SPOOLEASE_URL / SPOOLEASE_TOKEN
+cp .env.example .env            # edit SPOOLMAN_URL / SPOOLEASE_URL / SPOOLEASE_SECURITY_KEY
 set -a; . ./.env; set +a        # export the vars (bash)
 python -m spoolsync
 ```
 
-Docker (beside Spoolman): see [`docker-compose.example.yml`](docker-compose.example.yml).
+### Option 3: Build Docker locally
+
+```bash
+cd sync-tool/bridge
+docker build -t spoolsync .
+docker run -d \
+  -e SPOOLMAN_URL=http://spoolman:8000/api/v1 \
+  -e SPOOLEASE_URL=http://192.168.0.120 \
+  -e SPOOLEASE_MODE=encrypted \
+  -e SPOOLEASE_SECURITY_KEY=your-key \
+  -v spoolsync-state:/state \
+  spoolsync
+```
 
 **Always do a dry run first** (`DRY_RUN=true`): it logs every intended Spoolman write
 without performing any, so you can eyeball the mapping against your data.
