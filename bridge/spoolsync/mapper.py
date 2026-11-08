@@ -76,11 +76,13 @@ def map_vendor(rec: SpoolRecord) -> VendorSpec | None:
 def filament_external_id(rec: SpoolRecord) -> str:
     """Stable identity for the shared filament *type*.
 
-    Prefer SpoolEase's base-filament code (e.g. 'GFA01'); otherwise synthesize from the
-    distinguishing attributes so records of the same type dedupe onto one Filament.
+    Uses SpoolEase's base-filament code plus color, since the same product code (e.g. 'GFSNL08')
+    can have multiple color variants. Falls back to synthesizing from distinguishing attributes.
     """
     if rec.slicer_filament.strip():
-        return f"se-fil:{rec.slicer_filament.strip()}"
+        # Include color to distinguish variants (e.g., GFSNL08 comes in red, black, etc.)
+        color = _norm_hex(rec.color_code) or ""
+        return f"se-fil:{rec.slicer_filament.strip()}:{color}"
     key = "|".join([_slug(rec.brand), _slug(rec.material_type), _slug(rec.material_subtype), (_norm_hex(rec.color_code) or "")])
     return f"se-fil:{key}"
 
