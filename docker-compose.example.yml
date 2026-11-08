@@ -1,0 +1,153 @@
+# SpoolSync + Spoolman Docker Compose Example
+# Complete setup for running SpoolSync bridge with Spoolman
+
+version: '3.8'
+
+services:
+  # Spoolman - Filament inventory management
+  spoolman:
+    image: ghcr.io/donkie/spoolman:latest
+    container_name: spoolman
+    restart: unless-stopped
+
+    environment:
+      # Optional: Database configuration
+      # SPOOLMAN_DB_TYPE: postgres
+      # SPOOLMAN_DB_HOST: postgres
+      # SPOOLMAN_DB_PORT: 5432
+      # SPOOLMAN_DB_NAME: spoolman
+      # SPOOLMAN_DB_USERNAME: spoolman
+      # SPOOLMAN_DB_PASSWORD: password
+
+      # Optional: CORS configuration
+      # SPOOLMAN_CORS_ORIGIN: "*"
+
+      # Optional: Logging
+      SPOOLMAN_LOGGING_LEVEL: INFO
+
+    volumes:
+      # Persist Spoolman data (SQLite database)
+      - spoolman-data:/home/app/.local/share/spoolman
+
+    ports:
+      - "7912:8000"
+
+    networks:
+      - spoolsync-network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # SpoolSync - Bridge between SpoolEase and Spoolman
+  spoolsync:
+    # OPTION 1: Use published image from Docker Hub
+    image: yourusername/spoolsync:latest
+
+    # OPTION 2: Build locally from source
+    # build:
+    #   context: ./bridge
+    #   dockerfile: Dockerfile
+
+    container_name: spoolsync
+    restart: unless-stopped
+
+    depends_on:
+      spoolman:
+        condition: service_healthy
+
+    environment:
+      # ===== Required Configuration =====
+
+      # Spoolman API endpoint (use service name for Docker networking)
+      SPOOLMAN_URL: http://spoolman:8000/api/v1
+
+      # SpoolEase device IP address (replace with your device IP)
+      SPOOLEASE_URL: http://192.168.0.120
+
+      # ===== SpoolEase Authentication =====
+
+      # Mode: "json" (requires endpoint) or "encrypted" (works with current firmware)
+      SPOOLEASE_MODE: encrypted
+
+      # For encrypted mode: Your SpoolEase security key (6-7 characters)
+      SPOOLEASE_SECURITY_KEY: "123456"
+
+      # For JSON mode (when endpoint is implemented):
+      # SPOOLEASE_MODE: json
+      # SPOOLEASE_TOKEN: "your-secure-token"
+
+      # ===== Mapping Configuration =====
+
+      # Default filament diameter (1.75mm or 2.85mm)
+      DEFAULT_DIAMETER: "1.75"
+
+      # Default filament density (g/cm³) - PLA: 1.24, PETG: 1.27, ABS: 1.04
+      DEFAULT_DENSITY: "1.24"
+
+      # ===== Sync Behavior =====
+
+      # Poll interval in seconds (how often to check SpoolEase for changes)
+      SYNC_INTERVAL_SECONDS: "30"
+
+      # Dry run mode - logs actions without making changes (true/false)
+      DRY_RUN: "false"
+
+      # Archive missing spools in Spoolman when they disappear from SpoolEase
+      ARCHIVE_MISSING: "true"
+
+      # ===== Phase 2: Two-Way Sync (Optional) =====
+
+      # Enable real-time Spoolman → SpoolEase write-back
+      # Requires: SPOOLEASE_MODE=json and POST endpoint implemented
+      TWO_WAY_SYNC: "false"
+
+      # ===== Advanced =====
+
+      # State file path (don't change unless you know what you're doing)
+      STATE_PATH: /state/spoolsync.sqlite
+
+      # Logging level (DEBUG, INFO, WARNING, ERROR)
+      LOG_LEVEL: INFO
+
+    volumes:
+      # Persist sync state (id mappings, content hashes, echo suppression)
+      - spoolsync-state:/state
+
+    networks:
+      - spoolsync-network
+
+    # Optional: Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # Optional: Resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '0.5'
+    #       memory: 256M
+    #     reservations:
+    #       cpus: '0.1'
+    #       memory: 64M
+
+# Named volumes for data persistence
+volumes:
+  spoolman-data:
+    name: spoolman_data
+
+  spoolsync-state:
+    name: spoolsync_state
+
+# Network configuration
+networks:
+  spoolsync-network:
+    name: spoolsync_network
+    driver: bridge

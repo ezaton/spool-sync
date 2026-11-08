@@ -1,0 +1,41 @@
+# Simple SpoolSync Docker Compose
+# Minimal configuration for adding SpoolSync to existing Spoolman
+
+version: '3.8'
+
+services:
+  spoolsync:
+    # Replace 'yourusername' with your Docker Hub username
+    image: yourusername/spoolsync:latest
+
+    container_name: spoolsync
+    restart: unless-stopped
+
+    environment:
+      # Spoolman API (adjust if different)
+      SPOOLMAN_URL: http://spoolman:8000/api/v1
+
+      # Your SpoolEase device IP
+      SPOOLEASE_URL: http://192.168.0.120
+
+      # Encrypted mode (works with current SpoolEase firmware)
+      SPOOLEASE_MODE: encrypted
+      SPOOLEASE_SECURITY_KEY: "123456"  # Replace with your security key
+
+      # Defaults (adjust if needed)
+      DEFAULT_DIAMETER: "1.75"
+      DEFAULT_DENSITY: "1.24"
+      SYNC_INTERVAL_SECONDS: "30"
+      DRY_RUN: "false"
+
+    volumes:
+      - spoolsync-state:/state
+
+    # If Spoolman is in a different compose file, use:
+    network_mode: "container:spoolman"
+    # OR connect to Spoolman's network:
+    # networks:
+    #   - spoolman_default
+
+volumes:
+  spoolsync-state:

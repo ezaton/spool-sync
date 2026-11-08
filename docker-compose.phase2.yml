@@ -1,0 +1,63 @@
+# Phase 2: Two-Way Sync Docker Compose
+# For real-time bidirectional sync (requires SpoolEase POST endpoint)
+
+version: '3.8'
+
+services:
+  spoolman:
+    image: ghcr.io/donkie/spoolman:latest
+    container_name: spoolman
+    restart: unless-stopped
+    volumes:
+      - spoolman-data:/home/app/.local/share/spoolman
+    ports:
+      - "7912:8000"
+    networks:
+      - spoolsync-network
+
+  spoolsync:
+    image: yourusername/spoolsync:latest
+    container_name: spoolsync
+    restart: unless-stopped
+
+    depends_on:
+      - spoolman
+
+    environment:
+      # ===== Basic Configuration =====
+      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLEASE_URL: http://192.168.0.120
+
+      # ===== JSON Mode (Required for Phase 2) =====
+      SPOOLEASE_MODE: json
+      SPOOLEASE_TOKEN: "your-secure-token"  # Must match SpoolEase config
+
+      # ===== Two-Way Sync ENABLED =====
+      TWO_WAY_SYNC: "true"
+
+      # ===== Polling Configuration =====
+      SYNC_INTERVAL_SECONDS: "30"
+      DRY_RUN: "false"
+      ARCHIVE_MISSING: "true"
+
+      # ===== Defaults =====
+      DEFAULT_DIAMETER: "1.75"
+      DEFAULT_DENSITY: "1.24"
+      STATE_PATH: /state/spoolsync.sqlite
+      LOG_LEVEL: INFO
+
+    volumes:
+      - spoolsync-state:/state
+
+    networks:
+      - spoolsync-network
+
+    # Monitor logs to see two-way sync in action
+    # docker logs -f spoolsync
+
+volumes:
+  spoolman-data:
+  spoolsync-state:
+
+networks:
+  spoolsync-network:
