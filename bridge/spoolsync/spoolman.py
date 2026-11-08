@@ -118,9 +118,13 @@ class SpoolmanClient:
         """
         try:
             if spec.tag_uid:
-                hits = self._get("/spool", tag=spec.tag_uid, allow_archived="true").json()
-                if hits:
-                    return hits[0]["id"]
+                # SpoolEase can store multiple tags (semicolon-separated), try each
+                tags = [t.strip() for t in spec.tag_uid.split(";") if t.strip()]
+                for tag_uid in tags:
+                    hits = self._get("/spool", tag=tag_uid, allow_archived="true").json()
+                    if hits:
+                        log.debug("found spool %d via tag %s", hits[0]["id"], tag_uid)
+                        return hits[0]["id"]
             # extra text values are JSON-encoded in Spoolman, so the stored value is a quoted
             # string; an exact match is requested by wrapping the query value in quotes.
             params = {"extra.spoolease_id": f'"{spec.spoolease_id}"', "allow_archived": "true"}
@@ -155,14 +159,24 @@ class SpoolmanClient:
         return spool_id
 
     def _link_tag(self, spool_id: int, uid: str, fmt: str | None) -> None:
-        try:
-            self._write("POST", f"/spool/{spool_id}/tag", {"uid": uid, "format": fmt})
-        except httpx.HTTPStatusError as e:
-            # 409 = tag already linked (to this or another spool); 201 handled by raise_for_status.
-            if e.response is not None and e.response.status_code == 409:
-                log.debug("tag %s already linked: %s", uid, e.response.text)
-            else:
-                raise
+        """Link one or more RFID tags to a spool. Handles semicolon-separated tag lists."""
+        # SpoolEase can store multiple tags per spool (semicolon-separated)
+        # but Spoolman's API accepts one at a time
+        tags = [t.strip() for t in uid.split(";") if t.strip()]
+
+        for tag_uid in tags:
+            try:
+                self._write("POST", f"/spool/{spool_id}/tag", {"uid": tag_uid, "format": fmt})
+                log.debug("linked tag %s to spool %d", tag_uid, spool_id)
+            except httpx.HTTPStatusError as e:
+                # 409 = tag already linked (to this or another spool)
+                if e.response is not None and e.response.status_code == 409:
+                    log.debug("tag %s already linked: %s", tag_uid, e.response.text)
+                elif e.response is not None and e.response.status_code == 400:
+                    # Log 400 errors but don't fail the entire sync
+                    log.warning("failed to link tag %s to spool %d: %s", tag_uid, spool_id, e.response.text)
+                else:
+                    raise
 
     def archive_spool(self, spool_id: int) -> None:
         self._write("PATCH", f"/spool/{spool_id}", {"archived": True})
