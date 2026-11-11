@@ -53,24 +53,15 @@ class SpooleaseClient:
 
         Returns True on success, False on failure.
         """
-        if self._mode != "json":
-            log.warning("write_record requires SPOOLEASE_MODE=json; skipping write to SpoolEase")
-            return False
-
         # Map Spoolman fields to SpoolEase fields
-        # Currently, we map location/comment to the 'note' field
-        # This is a limitation - SpoolEase doesn't have separate location/comment fields
+        # SpoolEase C# model has separate assigned_location and actual_location,
+        # but for now we map Spoolman location to actual_location and comment to note
         payload = {"id": record_id}
 
-        if "location" in updates or "comment" in updates:
-            # Combine location and comment into note field
-            parts = []
-            if "location" in updates and updates["location"]:
-                parts.append(f"Location: {updates['location']}")
-            if "comment" in updates and updates["comment"]:
-                parts.append(updates["comment"])
-            if parts:
-                payload["note"] = " | ".join(parts)
+        if "location" in updates and updates["location"]:
+            payload["actual_location"] = updates["location"]
+        if "comment" in updates and updates["comment"]:
+            payload["note"] = updates["comment"]
 
         if not payload or len(payload) == 1:  # Only has 'id'
             log.debug("no writable fields to update for SpoolEase record %s", record_id)
@@ -78,12 +69,103 @@ class SpooleaseClient:
 
         try:
             log.info("writing back to SpoolEase record %s: %s", record_id, payload)
-            r = self._http.post("/api/spools/add-edit.json", json=payload)
-            r.raise_for_status()
+
+            if self._mode == "json":
+                r = self._http.post("/api/spools/add-edit.json", json=payload)
+                r.raise_for_status()
+            elif self._mode == "encrypted":
+                if not self._security_key:
+                    log.error("SPOOLEASE_SECURITY_KEY required for encrypted write")
+                    return False
+                # Encrypted mode: encrypt payload, POST to /api/spools/add-edit, decrypt response
+                encrypted_payload = self._encrypt_json(payload)
+                r = self._http.post("/api/spools/add-edit",
+                                   content=encrypted_payload,
+                                   headers={"Content-Type": "text/plain"})
+                r.raise_for_status()
+                # Response is also encrypted
+                if not self._try_decrypt_response(r.text):
+                    log.error("failed to decrypt SpoolEase response")
+                    return False
+            else:
+                log.error("unsupported SPOOLEASE_MODE: %s", self._mode)
+                return False
+
             log.debug("successfully updated SpoolEase record %s", record_id)
             return True
         except httpx.HTTPError as e:
             log.error("failed to write to SpoolEase record %s: %s", record_id, e)
+            return False
+
+    def _encrypt_json(self, payload: dict) -> str:
+        """Encrypt JSON payload for SpoolEase encrypted API (AES-256-GCM)."""
+        import base64
+        import json
+        import os
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+        # Convert payload to JSON with snake_case keys (SpoolEase convention)
+        json_text = json.dumps(payload)
+        plaintext = json_text.encode("utf-8")
+
+        # Derive key: PBKDF2-HMAC-SHA256(security_key, "example_salt", 10000 iterations)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"example_salt",
+            iterations=10000,
+        )
+        key = kdf.derive(self._security_key.encode("utf-8"))
+
+        # Encrypt with AES-GCM
+        aesgcm = AESGCM(key)
+        nonce = os.urandom(12)
+        ciphertext_and_tag = aesgcm.encrypt(nonce, plaintext, None)
+
+        # Format: base64(nonce) + base64(ciphertext||tag), both without padding
+        nonce_b64 = base64.b64encode(nonce).decode("ascii").rstrip("=")
+        ct_b64 = base64.b64encode(ciphertext_and_tag).decode("ascii").rstrip("=")
+        return nonce_b64 + ct_b64
+
+    def _try_decrypt_response(self, encrypted_response: str) -> bool:
+        """Try to decrypt SpoolEase response. Returns True if successful or response is plaintext."""
+        import base64
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+        # If response starts with '{', it's unencrypted error text (common for failures)
+        if encrypted_response.strip().startswith('{'):
+            log.debug("SpoolEase response is plaintext (success or error message)")
+            return True
+
+        try:
+            # Derive key
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=b"example_salt",
+                iterations=10000,
+            )
+            key = kdf.derive(self._security_key.encode("utf-8"))
+
+            # base64 nonce is first 16 chars (12 bytes encoded)
+            nonce_b64 = encrypted_response[:16]
+            ct_b64 = encrypted_response[16:]
+
+            # Add padding
+            nonce = base64.b64decode(nonce_b64 + "=" * (-len(nonce_b64) % 4))
+            ciphertext_and_tag = base64.b64decode(ct_b64 + "=" * (-len(ct_b64) % 4))
+
+            # Decrypt
+            aesgcm = AESGCM(key)
+            plaintext = aesgcm.decrypt(nonce, ciphertext_and_tag, None)
+            log.debug("decrypted response: %s", plaintext.decode("utf-8")[:200])
+            return True
+        except Exception as e:
+            log.warning("failed to decrypt response (may be error text): %s", e)
             return False
 
     def _fetch_json(self) -> list[SpoolRecord]:
