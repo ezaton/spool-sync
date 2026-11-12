@@ -53,6 +53,16 @@ def reconcile_once(se: SpooleaseClient, sm: SpoolmanClient, state: State, cfg: C
             existing_id = shadow.spoolman_spool_id if shadow and shadow.spoolman_spool_id else sm.find_spool_id(sspec)
             spool_id = sm.upsert_spool(sspec, filament_id, existing_id)
             state.upsert(ShadowRow(rec.id, h, spool_id, archived=False))
+
+            # Record write for echo suppression (Phase 2)
+            if spool_id:
+                content_snapshot = {
+                    "location": sspec.comment,  # SpoolEase note maps to location
+                    "comment": sspec.comment,
+                    "remaining_weight": sspec.remaining_weight,
+                }
+                state.record_write_to_spoolman(spool_id, content_snapshot)
+
             stats["created" if existing_id is None else "updated"] += 1
         except Exception:  # keep the loop alive; one bad record shouldn't stall the rest
             log.exception("failed to sync SpoolEase record id=%s", rec.id)

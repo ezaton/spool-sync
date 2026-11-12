@@ -61,6 +61,13 @@ async def handle_spoolman_event(event: dict, se: SpooleaseClient, state: State, 
         log.debug("no writable fields changed for spool_id=%d", spoolman_spool_id)
         return
 
+    # Skip write-back for now until we implement full record fetching
+    # SpoolEase add-edit endpoint requires full spool data, not partial updates
+    # TODO: Fetch current spool from SpoolEase, merge changes, then write back
+    log.debug("skipping write-back to SpoolEase %s (partial updates not yet supported): %s",
+              spoolease_id, updates)
+    return
+
     if dry_run:
         log.info("[dry-run] would write to SpoolEase %s: %s", spoolease_id, updates)
         return
