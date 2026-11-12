@@ -190,10 +190,10 @@ class SpooleaseClient:
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-        # Fetch encrypted blob (base64-encoded)
+        # Fetch encrypted response (format: base64(nonce) + base64(ciphertext||tag), unpadded)
         r = self._http.get("/api/spools")
         r.raise_for_status()
-        ciphertext = base64.b64decode(r.content)
+        encrypted_text = r.text.strip()
 
         # Derive key: PBKDF2-HMAC-SHA256(security_key, "example_salt", 10000 iterations)
         kdf = PBKDF2HMAC(
@@ -204,21 +204,29 @@ class SpooleaseClient:
         )
         key = kdf.derive(self._security_key.encode("utf-8"))
 
-        # Decrypt AES-GCM (first 12 bytes = nonce, rest = ciphertext + tag)
+        # Split into nonce and ciphertext parts (nonce is first 16 base64 chars = 12 bytes)
+        nonce_b64 = encrypted_text[:16]
+        ct_b64 = encrypted_text[16:]
+
+        # Add padding back and decode
+        nonce = base64.b64decode(nonce_b64 + "=" * (-len(nonce_b64) % 4))
+        ciphertext_and_tag = base64.b64decode(ct_b64 + "=" * (-len(ct_b64) % 4))
+
+        # Decrypt AES-GCM
         aesgcm = AESGCM(key)
-        nonce = ciphertext[:12]
-        ct_and_tag = ciphertext[12:]
-        plaintext = aesgcm.decrypt(nonce, ct_and_tag, None)
+        plaintext = aesgcm.decrypt(nonce, ciphertext_and_tag, None)
 
         # Parse CSV with adapted fields (base64 floats, y/n bools)
         # Note: CSV has NO header row, so we must specify field names manually
+        # Field order matches SpoolCsvColumn from SpoolEaseConsole.cs
         csv_text = plaintext.decode("utf-8")
         field_names = [
             "id", "tag_id", "material_type", "material_subtype", "color_name", "color_code",
             "note", "brand", "weight_advertised", "weight_core", "weight_new", "weight_current",
             "slicer_filament", "added_time", "encode_time", "added_full",
             "consumed_since_add", "consumed_since_weight", "ext_has_k",
-            "data_origin", "tag_type", "_unknown1", "_unknown2", "_unknown3"
+            "data_origin", "tag_type", "assigned_location", "actual_location",
+            "spools_count", "td", "stock"
         ]
         reader = csv.DictReader(io.StringIO(csv_text), fieldnames=field_names)
 
@@ -244,19 +252,32 @@ class SpooleaseClient:
                             except ValueError:
                                 row[field] = 0.0
 
-            # Decode y/n bools (added_full, ext_has_k)
-            for field in ["added_full", "ext_has_k"]:
+            # Decode y/n bools (added_full, ext_has_k, stock)
+            for field in ["added_full", "ext_has_k", "stock"]:
                 if field in row:
-                    row[field] = row[field].lower() in ("y", "yes", "true")
+                    val = row[field].strip() if row[field] else ""
+                    row[field] = val.lower() in ("y", "yes", "true") if val else None
 
             # Convert integer fields (empty strings become None)
             for field in ["weight_advertised", "weight_core", "weight_new", "weight_current",
-                         "added_time", "encode_time"]:
+                         "added_time", "encode_time", "spools_count"]:
                 if field in row:
                     val = row[field].strip() if row[field] else ""
                     if val:
                         try:
                             row[field] = int(val)
+                        except ValueError:
+                            row[field] = None
+                    else:
+                        row[field] = None
+
+            # Convert optional float fields (td = transmission distance)
+            for field in ["td"]:
+                if field in row:
+                    val = row[field].strip() if row[field] else ""
+                    if val:
+                        try:
+                            row[field] = float(val)
                         except ValueError:
                             row[field] = None
                     else:
