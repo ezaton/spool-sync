@@ -42,33 +42,90 @@ class SpooleaseClient:
             return self._fetch_encrypted()
         raise ValueError(f"Unknown SPOOLEASE_MODE: {self._mode!r}")
 
+    def get_spool_by_id(self, record_id: str) -> dict | None:
+        """Fetch a single spool record from SpoolEase by ID."""
+        try:
+            records = self.fetch_records()
+            for rec in records:
+                if rec.id == record_id:
+                    # Convert SpoolRecord to dict for manipulation
+                    return {
+                        "id": rec.id,
+                        "tag_id": rec.tag_id,
+                        "material_type": rec.material_type,
+                        "material_subtype": rec.material_subtype,
+                        "color_name": rec.color_name,
+                        "color_code": rec.color_code,
+                        "note": rec.note,
+                        "brand": rec.brand,
+                        "weight_advertised": rec.weight_advertised,
+                        "weight_core": rec.weight_core,
+                        "slicer_filament": rec.slicer_filament,
+                        "added_full": rec.added_full,
+                        "actual_location": getattr(rec, 'actual_location', ''),
+                        "assigned_location": getattr(rec, 'assigned_location', ''),
+                        "spools_count": getattr(rec, 'spools_count', 1),
+                        "stock": getattr(rec, 'stock', None),
+                        "td": getattr(rec, 'td', None),
+                    }
+            return None
+        except Exception as e:
+            log.error("failed to fetch SpoolEase record %s: %s", record_id, e)
+            return None
+
     def write_record(self, record_id: str, updates: dict) -> bool:
         """Phase 2: Write Spoolman-owned fields back to SpoolEase.
 
+        Fetches the full record, merges changes, and sends complete record.
+
         Updates should only include fields that Spoolman owns:
-        - location (maps to note field)
+        - location (maps to actual_location)
+        - comment (maps to note)
         - price (not currently mapped)
         - archived (not currently supported in SpoolEase)
-        - comment (maps to note field)
 
         Returns True on success, False on failure.
         """
-        # Map Spoolman fields to SpoolEase fields
-        # SpoolEase C# model has separate assigned_location and actual_location,
-        # but for now we map Spoolman location to actual_location and comment to note
-        payload = {"id": record_id}
+        # Fetch current record from SpoolEase
+        current = self.get_spool_by_id(record_id)
+        if not current:
+            log.warning("cannot write to SpoolEase record %s: record not found", record_id)
+            return False
 
-        if "location" in updates and updates["location"]:
+        # Build complete payload with Spoolman changes merged
+        # Format matches AddOrEditSpoolRequest from SpoolEaseConsole.cs
+        payload = {
+            "id": record_id,
+            "tag_id": current["tag_id"] or "",
+            "rgba": current["color_code"] or "",
+            "color_name": current["color_name"] or "",
+            "material": current["material_type"] or "",
+            "subtype": current["material_subtype"] or "",
+            "brand": current["brand"] or "",
+            "core_weight": current["weight_core"] or 0,
+            "label_weight": current["weight_advertised"] or 0,
+            "note": current["note"] or "",
+            "slicer_filament": current["slicer_filament"] or "",
+            "full_unused": "y" if current["added_full"] else ("n" if current["added_full"] is False else ""),
+            "assigned_location": current["assigned_location"] or "",
+            "actual_location": current["actual_location"] or "",
+            "spools_count": current["spools_count"] or 1,
+        }
+
+        # Optional fields - only include if they have values
+        if current["stock"] is not None:
+            payload["stock"] = current["stock"]
+        if current["td"] is not None:
+            payload["td"] = current["td"]
+
+        # Merge Spoolman updates (only the fields Spoolman owns)
+        if "location" in updates and updates["location"] is not None:
             payload["actual_location"] = updates["location"]
-        if "comment" in updates and updates["comment"]:
+        if "comment" in updates and updates["comment"] is not None:
             payload["note"] = updates["comment"]
 
-        if not payload or len(payload) == 1:  # Only has 'id'
-            log.debug("no writable fields to update for SpoolEase record %s", record_id)
-            return True
-
         try:
-            log.info("writing back to SpoolEase record %s: %s", record_id, payload)
+            log.info("writing back to SpoolEase record %s with merged updates", record_id)
 
             if self._mode == "json":
                 r = self._http.post("/api/spools/add-edit.json", json=payload)
