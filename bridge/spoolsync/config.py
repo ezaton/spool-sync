@@ -51,6 +51,10 @@ class Config:
     # Fallback densities by material (g/cm^3) when Spoolman's /external/material lacks one.
     # Spoolman REQUIRES density>0 and diameter>0 on every Filament.
     default_density: float
+    # Fallback extruder temp (°C) for unknown/custom filaments.
+    # SpoolEase stores nozzle temp ranges (min/max) from its base-material CSVs.
+    # We map to the midpoint; for unrecognized filaments, use this PLA-like default.
+    default_extruder_temp: int
 
     # --- Loop / behavior ---
     poll_interval_seconds: int
@@ -76,6 +80,7 @@ class Config:
             spoolease_security_key=_get("SPOOLEASE_SECURITY_KEY"),
             default_diameter=_get_float("DEFAULT_DIAMETER", 1.75),
             default_density=_get_float("DEFAULT_DENSITY", 1.24),  # PLA-ish fallback
+            default_extruder_temp=_get_int("DEFAULT_EXTRUDER_TEMP", 215),  # PLA midpoint (190-240)
             poll_interval_seconds=_get_int("SYNC_INTERVAL_SECONDS", 30),
             dry_run=_get_bool("DRY_RUN", False),
             archive_missing=_get_bool("ARCHIVE_MISSING", True),

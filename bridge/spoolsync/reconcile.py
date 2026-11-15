@@ -46,7 +46,7 @@ def reconcile_once(se: SpooleaseClient, sm: SpoolmanClient, state: State, cfg: C
             density = _resolve_density(rec, density_map, cfg.default_density)
             vspec = map_vendor(rec)
             vendor_id = sm.upsert_vendor(vspec) if vspec else None
-            filament_id = sm.upsert_filament(map_filament(rec, density=density, diameter=cfg.default_diameter), vendor_id)
+            filament_id = sm.upsert_filament(map_filament(rec, density=density, diameter=cfg.default_diameter, default_extruder_temp=cfg.default_extruder_temp), vendor_id)
             if filament_id is None:  # dry-run or failed create
                 continue
             sspec = map_spool(rec)

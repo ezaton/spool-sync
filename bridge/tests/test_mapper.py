@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from spoolsync.mapper import (  # noqa: E402
     compute_remaining,
     filament_external_id,
+    map_extruder_temp,
     map_filament,
     map_spool,
     map_vendor,
@@ -100,3 +101,74 @@ def test_retired_tag_is_not_linked():
 
 def test_map_vendor_none_when_no_brand():
     assert map_vendor(SpoolRecord(id="40")) is None
+
+
+# ---------------------------------------------------------------------------
+# Temperature mapping tests
+# ---------------------------------------------------------------------------
+
+
+def test_known_base_filament_returns_exact_midpoint():
+    # GFA01 = Bambu PLA Matte, 190-240 -> midpoint 215
+    rec = SpoolRecord(id="t1", slicer_filament="GFA01", material_type="PLA")
+    assert map_extruder_temp(rec) == 215
+
+
+def test_high_temp_filament_returns_correct_midpoint():
+    # GFT02 = Bambu PPS-CF, 310-340 -> midpoint 325
+    rec = SpoolRecord(id="t2", slicer_filament="GFT02", material_type="PPS-CF")
+    assert map_extruder_temp(rec) == 325
+
+
+def test_odd_range_rounds_down():
+    # GFU02 = Bambu TPU for AMS, 220-240 -> midpoint 230
+    rec = SpoolRecord(id="t3", slicer_filament="GFU02", material_type="TPU-AMS")
+    assert map_extruder_temp(rec) == 230
+
+
+def test_unknown_slicer_code_falls_back_to_material():
+    # Unknown code but known material type
+    rec = SpoolRecord(id="t4", slicer_filament="XYZ99", material_type="ABS")
+    assert map_extruder_temp(rec) == 260  # (240+280)//2
+
+
+def test_unknown_slicer_code_falls_back_to_material_subtype():
+    # Unknown code, material type with subtype
+    rec = SpoolRecord(id="t5", slicer_filament="XYZ99", material_type="PLA-CF")
+    assert map_extruder_temp(rec) == 215  # (190+240)//2
+
+
+def test_completely_unknown_returns_default():
+    # No code, no known material
+    rec = SpoolRecord(id="t6", slicer_filament="", material_type="MysteryPlastic")
+    assert map_extruder_temp(rec) == 215  # default
+
+
+def test_completely_unknown_respects_custom_default():
+    rec = SpoolRecord(id="t7", slicer_filament="", material_type="")
+    assert map_extruder_temp(rec, default=200) == 200
+
+
+def test_map_filament_populates_extruder_temp_from_base_filament():
+    rec = SpoolRecord(id="t10", brand="Bambu", material_type="PLA", material_subtype="Matte",
+                      color_name="Black", color_code="#000000", weight_advertised=1000,
+                      weight_core=250, slicer_filament="GFA01")
+    f = map_filament(rec, density=1.24, diameter=1.75, default_extruder_temp=215)
+    assert f.settings_extruder_temp == 215  # (190+240)//2
+    assert f.settings_bed_temp is None
+
+
+def test_map_filament_populates_extruder_temp_from_material_fallback():
+    rec = SpoolRecord(id="t11", brand="Generic", material_type="ABS", material_subtype="",
+                      color_name="Black", color_code="#000000", weight_advertised=500,
+                      weight_core=150, slicer_filament="")
+    f = map_filament(rec, density=1.04, diameter=1.75, default_extruder_temp=215)
+    assert f.settings_extruder_temp == 260  # (240+280)//2
+
+
+def test_map_filament_uses_custom_default_for_unknown():
+    rec = SpoolRecord(id="t12", brand="Unknown", material_type="Mystery",
+                      color_name="Red", color_code="#FF0000FF", weight_advertised=500,
+                      weight_core=100, slicer_filament="")
+    f = map_filament(rec, density=1.0, diameter=1.75, default_extruder_temp=180)
+    assert f.settings_extruder_temp == 180

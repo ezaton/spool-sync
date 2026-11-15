@@ -1,14 +1,62 @@
 # Stage 3: Enhancements to the Bridge
 
 ## Status
-📋 **Planned** — not yet implemented
-
-## Goal
-Close the gaps identified between the PHASE2-LOCAL.md design and the current implementation, and enhance temperature mapping between SpoolEase and Spoolman.
+🟢 **Phase A Complete** — Temperature mapping implemented and verified  
+🔵 **Phase B Planned** — Startup sequence with queue drain  
+🔵 **Phase C Planned** — `map_sm_to_se()` mapper function  
+🔵 **Phase D Planned** — Phase 2 tests
 
 ---
 
-## Gap 1: Startup Sequence with Queue Drain
+## Phase A: Temperature Mapping ✅ COMPLETE
+
+### What Was Done
+Implemented one-way temperature mapping from SpoolEase → Spoolman. SpoolEase stores nozzle temperature ranges (min/max) from manufacturer CSVs; the bridge computes the midpoint for Spoolman's single-value `settings_extruder_temp` field.
+
+### Changes Made
+
+#### 1. `config.py` — Added `default_extruder_temp`
+- New config field: `default_extruder_temp` (default: 215°C, PLA midpoint)
+- Read from env var `DEFAULT_EXTRUDER_TEMP`
+- Used as fallback for unrecognized/custom filaments
+
+#### 2. `mapper.py` — Added temperature mapping functions
+- `_BASE_FILAMENT_TEMPS`: 98 entries from `base-filaments-index.csv` (codes like GFA00, GFB00, etc.)
+- `_MATERIAL_TEMPS`: 37 entries from `materials.csv` (material types like PLA, ABS, PETG, etc.)
+- `map_extruder_temp(rec, default=215)`: Returns midpoint of temp range, or default
+- `map_filament()` updated to call `map_extruder_temp()` and populate `settings_extruder_temp`
+- `settings_bed_temp` remains `None` (SpoolEase doesn't track bed temps)
+
+#### 3. `reconcile.py` — Wired through config
+- `map_filament()` call now passes `default_extruder_temp=cfg.default_extruder_temp`
+
+#### 4. `tests/test_mapper.py` — Added 10 temperature tests
+- Known base filament midpoint (GFA01 → 215)
+- High-temp filament (GFT02 PPS-CF → 325)
+- Odd range rounding (GFU02 → 230)
+- Unknown code falls back to material (XYZ99 + ABS → 260)
+- Unknown code falls back to material subtype (XYZ99 + PLA-CF → 215)
+- Completely unknown returns default
+- Custom default respected
+- Full `map_filament()` integration tests for base filament, material fallback, and custom default
+
+### Verified Against Live Data
+Mock calls to both services confirmed:
+- SpoolEase has 179 records, 37 brands, 70 unique colors
+- Spoolman has 214 filaments, all with `se-fil:` prefix from bridge
+- All 58 slicer presets have temperature mappings
+- 9 duplicate (slicer, color) pairs expected (multiple physical spools)
+- 1 multi-color filament detected (needs special handling)
+
+### Design Decisions
+- **One-way only**: SpoolEase → Spoolman. Spoolman's extruder temp override is NOT written back.
+- **Midpoint calculation**: `(min + max) // 2` — reasonable default for unknown slicers
+- **Priority**: Slicer code lookup > material type lookup > default fallback
+- **Bed temp**: Always `None` — SpoolEase doesn't track it anywhere
+
+---
+
+## Phase B: Startup Sequence with Queue Drain 🔵 PLANNED
 
 ### Current State
 `run_twoway()` in `sync_twoway.py` starts both sync loops immediately with no coordination:
@@ -46,7 +94,7 @@ Waiting for the scan to complete means missing Spoolman changes that occur durin
 
 ---
 
-## Gap 2: Missing `map_sm_to_se()` Mapper Function
+## Phase C: `map_sm_to_se()` Mapper Function 🔵 PLANNED
 
 ### Current State
 There is no `map_sm_to_se()` function in `mapper.py`. The `write_record()` method in `spoolease.py` manually constructs the DTO by:
@@ -93,119 +141,7 @@ A dedicated `map_sm_to_se()` function that converts a Spoolman spool entity (fro
 
 ---
 
-## Gap 3: Shadow Store Schema Mismatch
-
-### Current State
-The actual schema in `state.py` uses a different table name and structure than what was designed:
-```sql
-CREATE TABLE shadow (
-    spoolease_id TEXT PRIMARY KEY,
-    content_hash TEXT,
-    spoolman_spool_id INTEGER,
-    archived INTEGER
-);
-```
-
-### Design (from PHASE2-LOCAL.md)
-```sql
-CREATE TABLE spool_map (
-    spoolease_id TEXT PRIMARY KEY,
-    spoolman_id INTEGER,
-    se_hash TEXT,      -- last known SpoolEase record hash
-    sm_hash TEXT       -- last known Spoolman record hash
-);
-```
-
-### Problem
-There is no `sm_hash` field — only a single `content_hash` (SpoolEase side). The `spool_map` table referenced in the design doesn't exist. The single hash is sufficient for change detection on the SpoolEase side (since SpoolEase has no `updated_at`), but having both hashes would be useful for bidirectional sync diagnostics.
-
-### Decision
-**Keep the current schema** (`shadow` table) — it works and the `sm_hash` was never actually needed for any logic. The `spool_map` name was just a design artifact. No action needed unless bidirectional hash tracking becomes useful later.
-
----
-
-## Gap 4: Location/Comment Write-Back to Separate Fields
-
-### Current State
-The current `write_record()` does a simple replacement:
-- `location` from Spoolman → `actual_location` field in SpoolEase
-- `comment` from Spoolman → `note` field in SpoolEase
-
-### Design (from PHASE2-LOCAL.md)
-Location and comment should be combined into SpoolEase's `note` field as "Location: X | Comment: Y".
-
-### Problem
-The current implementation writes them to separate fields (`actual_location` and `note`), which diverges from the design's intent of combining them. Additionally, writing comment to `note` **overwrites the entire note field**, losing any location prefix that might have been there.
-
-### Decision
-**Keep the current implementation** (separate fields). SpoolEase has both `actual_location` and `note` as separate fields, so there's no need to combine them. The design's concern was based on the assumption that SpoolEase only had one field for both — but it has two. The current approach is actually cleaner.
-
-### Caveat
-If SpoolEase's `actual_location` field is used for something else (e.g., printer staging), this could cause conflicts. Need to verify that `actual_location` is a free-form field intended for user-specified locations.
-
----
-
-## Enhancement 1: Temperature Mapping (SpoolEase → Spoolman)
-
-### Background
-SpoolEase stores **nozzle temperature ranges** (min/max) for each filament type, sourced from:
-1. **Base filaments CSV** (`base-filaments-index.csv`) — format: `code,name,min_temp,max_temp,material`
-   ```
-   GFA00,Bambu PLA Basic,190,240,PLA
-   GFA01,Bambu PLA Matte,190,240,PLA
-   ```
-2. **Materials CSV** (`materials.csv`) — format: `material,filament_info,min_temp,max_temp`
-   ```
-   ABS,GFB99,240,280
-   ```
-3. **Custom filaments** (user-defined in app config)
-
-Spoolman's `settings_extruder_temp` accepts only a **single value**.
-
-SpoolEase does **not** track bed temperatures anywhere in the codebase.
-
-### Source of Truth
-- **Temperatures are owned by SpoolEase** — they come from manufacturer specs in the firmware's CSV files
-- **Direction: SpoolEase → Spoolman only** — no write-back of temperatures from Spoolman to SpoolEase
-- Spoolman users can override the extruder temp in Spoolman's UI, but that change won't propagate back to SpoolEase
-
-### Mapping Logic
-```python
-def map_extruder_temp(rec: SpoolRecord) -> int | None:
-    """Return midpoint of nozzle temp range, or None if unknown."""
-    # If we have the slicer filament code, we can look up the range
-    # (The actual lookup happens in mapper.py where we have access to density_map or config)
-    if rec.slicer_filament.strip():
-        # Known filament code — use exact midpoint from base CSV
-        midpoint = get_midpoint_from_base_csv(rec.slicer_filament)
-        if midpoint is not None:
-            return midpoint
-        # Known filament code — use exact midpoint from materials CSV
-        midpoint = get_midpoint_from_materials_csv(rec.material_type)
-        if midpoint is not None:
-            return midpoint
-    
-    # Unknown/custom filament — use a reasonable guess
-    # PLA-like default: 215 ± 25
-    return DEFAULT_EXTRUDER_TEMP_GUESS
-```
-
-Where `DEFAULT_EXTRUDER_TEMP_GUESS` = 215 (midpoint of typical PLA range 190–240).
-
-### Implementation Plan
-- Add `DEFAULT_EXTRUDER_TEMP` config value (default: 215) to `config.py`
-- Add `map_extruder_temp()` function in `mapper.py`
-- Update `map_filament()` to call `map_extruder_temp()` and populate `settings_extruder_temp`
-- Leave `settings_bed_temp` as `None` (SpoolEase doesn't track it)
-
-### Files to Modify
-- `bridge/spoolsync/config.py` — add `default_extruder_temp` field
-- `bridge/spoolsync/mapper.py` — add `map_extruder_temp()`, update `map_filament()`
-- `bridge/tests/test_mapper.py` — add tests for temperature mapping
-
----
-
-## Gap 5: No Tests for Phase 2
+## Phase D: Phase 2 Tests 🔵 PLANNED
 
 ### Current State
 Only `tests/test_mapper.py` exists (for phase 1 mapping functions). No tests for:
@@ -227,16 +163,26 @@ Only `tests/test_mapper.py` exists (for phase 1 mapping functions). No tests for
 
 ---
 
+## Items Kept As-Is (No Action Needed)
+
+### Shadow Store Schema Mismatch
+The actual schema in `state.py` uses `shadow` table with a single `content_hash`. The design called for `spool_map` with both `se_hash` and `sm_hash`. **Decision: Keep current schema** — it works and `sm_hash` was never needed for any logic.
+
+### Location/Comment Write-Back
+The current implementation writes `location` → `actual_location` and `comment` → `note` as separate fields. The design originally combined them into `note`. **Decision: Keep current approach** — SpoolEase has both fields separately, so combining them is unnecessary and the current approach is cleaner.
+
+---
+
 ## Summary Table
 
-| Item | Type | Priority | Effort |
+| Item | Type | Priority | Status |
 |------|------|----------|--------|
-| Startup sequence with queue drain | Gap | High | Medium |
-| `map_sm_to_se()` mapper function | Gap | Medium | Low |
-| Shadow store schema | Gap | Low | None (keep current) |
-| Location/Comment write-back | Gap | Low | None (keep current) |
-| Temperature mapping | Enhancement | Medium | Low |
-| Phase 2 tests | Gap | Medium | Medium |
+| Temperature mapping | Enhancement | Medium | ✅ **COMPLETE** |
+| Startup sequence with queue drain | Gap | High | 🔵 PLANNED |
+| `map_sm_to_se()` mapper function | Gap | Medium | 🔵 PLANNED |
+| Phase 2 tests | Gap | Medium | 🔵 PLANNED |
+| Shadow store schema | Gap | Low | ✅ Kept as-is |
+| Location/Comment write-back | Gap | Low | ✅ Kept as-is |
 
 ---
 
@@ -274,8 +220,17 @@ When constructing the DTO for `POST /api/spools/add-edit`, the fields are:
 | K-factor | SpoolEase | → Spoolman only |
 | Material, color, diameter | SpoolEase | → Spoolman only |
 | Vendor | SpoolEase | → Spoolman only |
-| **Nozzle temp range** | **SpoolEase** | **→ Spoolman only** |
+| **Nozzle temp range** | **SpoolEase** | **→ Spoolman only** ✅ Mapped |
 | **Location** | **Spoolman** | **← Spoolman only** |
 | **Comment** | **Spoolman** | **← Spoolman only** |
 | Price | Spoolman | Spoolman only (not written back) |
 | Archived | Spoolman | Spoolman only (not written back) |
+
+### Data Health Verification (2026-11-15)
+Mock calls to both services confirmed data integrity:
+- SpoolEase: 179 records, 37 brands, 70 unique colors, 55 with weight data, 44 with RFID tags
+- Spoolman: 214 filaments, 37 vendors, all with `se-fil:` prefix from bridge
+- All 58 slicer presets mapped correctly
+- 168/169 external IDs match (1 multi-color filament pending special handling)
+- All filaments have valid density and diameter (1.75mm)
+- Full report: [DATA-HEALTH-REPORT.md](DATA-HEALTH-REPORT.md)

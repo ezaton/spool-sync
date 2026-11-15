@@ -80,7 +80,6 @@ def filament_external_id(rec: SpoolRecord) -> str:
     can have multiple color variants. Falls back to synthesizing from distinguishing attributes.
     """
     if rec.slicer_filament.strip():
-        # Include color to distinguish variants (e.g., GFSNL08 comes in red, black, etc.)
         color = _norm_hex(rec.color_code) or ""
         return f"se-fil:{rec.slicer_filament.strip()}:{color}"
     key = "|".join([_slug(rec.brand), _slug(rec.material_type), _slug(rec.material_subtype), (_norm_hex(rec.color_code) or "")])
@@ -100,7 +99,184 @@ def map_filament_name(rec: SpoolRecord) -> str | None:
     return name or None
 
 
-def map_filament(rec: SpoolRecord, *, density: float, diameter: float) -> FilamentSpec:
+# ---------------------------------------------------------------------------
+# Temperature mapping: SpoolEase nozzle temp range -> Spoolman single extruder temp
+# ---------------------------------------------------------------------------
+
+# Base filament codes -> (min_temp, max_temp) from base-filaments-index.csv
+_BASE_FILAMENT_TEMPS: dict[str, tuple[int, int]] = {
+    "GFA00": (190, 240),  # Bambu PLA Basic
+    "GFA01": (190, 240),  # Bambu PLA Matte
+    "GFA02": (190, 240),  # Bambu PLA Metal
+    "GFA05": (190, 240),  # Bambu PLA Silk
+    "GFA06": (190, 240),  # Bambu PLA Silk+
+    "GFA07": (190, 240),  # Bambu PLA Marble
+    "GFA08": (190, 240),  # Bambu PLA Sparkle
+    "GFA09": (190, 240),  # Bambu PLA Tough
+    "GFA11": (210, 260),  # Bambu PLA Aero
+    "GFA12": (190, 240),  # Bambu PLA Glow
+    "GFA13": (190, 240),  # Bambu PLA Dynamic
+    "GFA15": (190, 240),  # Bambu PLA Galaxy
+    "GFA16": (190, 240),  # Bambu PLA Wood
+    "GFA17": (190, 240),  # Bambu PLA Translucent
+    "GFA18": (190, 240),  # Bambu PLA Lite
+    "GFA50": (210, 250),  # Bambu PLA-CF
+    "GFB00": (240, 280),  # Bambu ABS
+    "GFB01": (240, 280),  # Bambu ASA
+    "GFB02": (240, 280),  # Bambu ASA-Aero
+    "GFB50": (240, 280),  # Bambu ABS-GF
+    "GFB51": (250, 280),  # Bambu ASA-CF
+    "GFB60": (240, 280),  # PolyLite ABS
+    "GFB61": (240, 280),  # PolyLite ASA
+    "GFB98": (240, 280),  # Generic ASA
+    "GFB99": (240, 280),  # Generic ABS
+    "GFC00": (260, 290),  # Bambu PC
+    "GFC01": (260, 290),  # Bambu PC FR
+    "GFC99": (260, 290),  # Generic PC
+    "GFG00": (230, 270),  # Bambu PETG Basic
+    "GFG01": (230, 270),  # Bambu PETG Translucent
+    "GFG02": (230, 270),  # Bambu PETG HF
+    "GFG50": (240, 270),  # Bambu PETG-CF
+    "GFG60": (220, 260),  # PolyLite PETG
+    "GFG96": (220, 270),  # Generic PETG HF
+    "GFG97": (240, 270),  # Generic PCTG
+    "GFG98": (240, 270),  # Generic PETG-CF
+    "GFG99": (220, 270),  # Generic PETG
+    "GFL00": (190, 240),  # PolyLite PLA
+    "GFL01": (190, 240),  # PolyTerra PLA
+    "GFL03": (190, 240),  # eSUN PLA+
+    "GFL04": (190, 240),  # Overture PLA
+    "GFL05": (190, 240),  # Overture Matte PLA
+    "GFL06": (250, 290),  # Fiberon PETG-ESD
+    "GFL50": (280, 300),  # Fiberon PA6-CF
+    "GFL51": (280, 300),  # Fiberon PA6-GF
+    "GFL52": (260, 300),  # Fiberon PA12-CF
+    "GFL53": (260, 300),  # Fiberon PA612-CF
+    "GFL54": (270, 300),  # Fiberon PET-CF
+    "GFL55": (240, 270),  # Fiberon PETG-rCF
+    "GFL95": (190, 240),  # Generic PLA High Speed
+    "GFL96": (190, 240),  # Generic PLA Silk
+    "GFL98": (190, 240),  # Generic PLA-CF
+    "GFL99": (190, 240),  # Generic PLA
+    "GFN03": (260, 300),  # Bambu PA-CF
+    "GFN04": (260, 300),  # Bambu PAHT-CF
+    "GFN05": (260, 300),  # Bambu PA6-CF
+    "GFN06": (280, 320),  # Bambu PPA-CF
+    "GFN07": (280, 320),  # Bambu PPA-GF
+    "GFN08": (260, 300),  # Bambu PA6-GF
+    "GFN96": (280, 320),  # Generic PPA-GF
+    "GFN97": (280, 320),  # Generic PPA-CF
+    "GFN98": (260, 300),  # Generic PA-CF
+    "GFN99": (240, 280),  # Generic PA
+    "GFP95": (220, 250),  # Generic PP-GF
+    "GFP96": (220, 250),  # Generic PP-CF
+    "GFP97": (220, 250),  # Generic PP
+    "GFP98": (175, 220),  # Generic PE-CF
+    "GFP99": (175, 220),  # Generic PE
+    "GFR98": (190, 240),  # Generic PHA
+    "GFR99": (175, 220),  # Generic EVA
+    "GFS00": (190, 240),  # Bambu Support W
+    "GFS01": (260, 300),  # Bambu Support G
+    "GFS02": (190, 240),  # Bambu Support For PLA
+    "GFS03": (260, 300),  # Bambu Support For PA/PET
+    "GFS04": (210, 250),  # Bambu PVA
+    "GFS05": (190, 240),  # Bambu Support For PLA/PETG
+    "GFS06": (240, 270),  # Bambu Support for ABS
+    "GFS97": (190, 240),  # Generic BVOH
+    "GFS98": (220, 270),  # Generic HIPS
+    "GFS99": (190, 240),  # Generic PVA
+    "GFSNL02": (205, 245),  # SUNLU PLA Matte
+    "GFSNL03": (190, 240),  # SUNLU PLA+
+    "GFSNL04": (190, 240),  # SUNLU PLA+ 2.0
+    "GFSNL05": (190, 240),  # SUNLU Silk PLA+
+    "GFSNL06": (190, 260),  # SUNLU PLA Marble
+    "GFSNL07": (195, 260),  # SUNLU Wood PLA
+    "GFSNL08": (230, 280),  # SUNLU PETG
+    "GFT01": (260, 290),  # Bambu PET-CF
+    "GFT02": (310, 340),  # Bambu PPS-CF
+    "GFT97": (300, 340),  # Generic PPS
+    "GFT98": (310, 340),  # Generic PPS-CF
+    "GFU00": (200, 250),  # Bambu TPU 95A HF
+    "GFU01": (200, 250),  # Bambu TPU 95A
+    "GFU02": (220, 240),  # Bambu TPU for AMS
+    "GFU03": (200, 240),  # Bambu TPU 90A
+    "GFU04": (200, 240),  # Bambu TPU 85A
+    "GFU98": (200, 250),  # Generic TPU for AMS
+    "GFU99": (200, 250),  # Generic TPU
+}
+
+# Material types -> (min_temp, max_temp) from materials.csv (fallback when no slicer code)
+_MATERIAL_TEMPS: dict[str, tuple[int, int]] = {
+    "abs": (240, 280),
+    "abs-gf": (240, 280),
+    "abs-s": (240, 270),
+    "asa": (240, 280),
+    "asa-aero": (240, 280),
+    "asa-cf": (240, 280),
+    "bvoh": (190, 240),
+    "eva": (190, 240),
+    "hips": (220, 270),
+    "pa": (260, 300),
+    "pa-cf": (260, 300),
+    "pa-gf": (260, 300),
+    "pa-s": (260, 300),
+    "pa6-cf": (260, 300),
+    "pc": (260, 290),
+    "pctg": (220, 260),
+    "pe": (190, 240),
+    "pe-cf": (190, 240),
+    "pet-cf": (220, 260),
+    "petg": (220, 260),
+    "petg-cf": (220, 260),
+    "pha": (190, 240),
+    "pla": (190, 240),
+    "pla-aero": (190, 240),
+    "pla-cf": (190, 240),
+    "pla-s": (190, 240),
+    "pp": (220, 250),
+    "pp-cf": (220, 250),
+    "pp-gf": (220, 250),
+    "ppa-cf": (280, 320),
+    "ppa-gf": (280, 320),
+    "pps": (300, 340),
+    "pps-cf": (300, 340),
+    "pva": (190, 240),
+    "tpu": (200, 250),
+    "tpu-ams": (200, 250),
+}
+
+
+def map_extruder_temp(rec: SpoolRecord, default: int = 215) -> int | None:
+    """Return the midpoint of SpoolEase's nozzle temp range, or a default guess.
+
+    SpoolEase stores min/max nozzle temps from its base-material CSVs (e.g. PLA: 190-240).
+    We compute the midpoint for Spoolman's single-value extruder temp field.
+
+    For unrecognized/custom filaments (no slicer code, no material match), return the
+    caller-provided default - a reasonable PLA-like guess.
+
+    This is a one-way mapping: SpoolEase -> Spoolman only. Spoolman's extruder temp
+    override is not written back to SpoolEase.
+    """
+    code = rec.slicer_filament.strip()
+    material = rec.material_type.strip().lower()
+
+    # Known base filament codes - exact midpoint from base-filaments-index.csv
+    if code and code in _BASE_FILAMENT_TEMPS:
+        lo, hi = _BASE_FILAMENT_TEMPS[code]
+        return (lo + hi) // 2
+
+    # Material-based fallback - look up by material type (from materials.csv)
+    if material and material in _MATERIAL_TEMPS:
+        lo, hi = _MATERIAL_TEMPS[material]
+        return (lo + hi) // 2
+
+    # Unknown - fall back to caller-provided default
+    return default
+
+
+def map_filament(rec: SpoolRecord, *, density: float, diameter: float,
+                 default_extruder_temp: int = 215) -> FilamentSpec:
     return FilamentSpec(
         external_id=filament_external_id(rec),
         name=map_filament_name(rec),
@@ -111,8 +287,8 @@ def map_filament(rec: SpoolRecord, *, density: float, diameter: float) -> Filame
         density=density,
         diameter=diameter,
         article_number=rec.slicer_filament.strip() or None,
-        settings_extruder_temp=None,  # could be filled from materials.csv; left None in phase 1
-        settings_bed_temp=None,
+        settings_extruder_temp=map_extruder_temp(rec, default=default_extruder_temp),
+        settings_bed_temp=None,  # SpoolEase does not track bed temperatures
     )
 
 
