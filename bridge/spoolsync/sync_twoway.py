@@ -55,8 +55,8 @@ async def run_twoway(cfg: Config) -> None:
     7. Normal operation (direct processing)
     """
     logging.basicConfig(level=cfg.log_level, format="%(asctime)s %(name)-22s %(levelname)-7s %(message)s")
-    log.info("spoolsync TWO-WAY starting: SpoolEase=%s <-> Spoolman=%s (mode=%s, interval=%ss, dry_run=%s)",
-             cfg.spoolease_url, cfg.spoolman_url, cfg.spoolease_mode, cfg.poll_interval_seconds, cfg.dry_run)
+    log.info("spoolsync TWO-WAY starting: SpoolEase=%s <-> Spoolman=%s (mode=%s, interval=%ss, dry_run=%s, verbose=%s)",
+             cfg.spoolease_url, cfg.spoolman_url, cfg.spoolease_mode, cfg.poll_interval_seconds, cfg.dry_run, cfg.verbose)
 
     state = State(cfg.state_path)
     sm = SpoolmanClient(cfg.spoolman_url, dry_run=cfg.dry_run)
@@ -77,7 +77,7 @@ async def run_twoway(cfg: Config) -> None:
         # --- Normal operation: both loops running concurrently ---
         # Create event handler callback for websocket (direct processing, no queue)
         async def on_spoolman_event(event: dict) -> None:
-            await handle_spoolman_event(event, se, state, dry_run=cfg.dry_run)
+            await handle_spoolman_event(event, se, state, cfg=cfg, dry_run=cfg.dry_run)
 
         # Run both sync loops concurrently
         await asyncio.gather(
@@ -134,7 +134,7 @@ async def _startup_sequence(se: SpooleaseClient, sm: SpoolmanClient, state: Stat
                                 event = json.loads(message)
                                 if startup_done.is_set():
                                     # Startup complete: process directly
-                                    await handle_spoolman_event(event, se, state, dry_run=cfg.dry_run)
+                                    await handle_spoolman_event(event, se, state, cfg=cfg, dry_run=cfg.dry_run)
                                 else:
                                     # Still in startup: queue the event
                                     try:
@@ -201,7 +201,7 @@ async def _startup_sequence(se: SpooleaseClient, sm: SpoolmanClient, state: Stat
     while not event_queue.empty():
         try:
             event = event_queue.get_nowait()
-            await handle_spoolman_event(event, se, state, dry_run=cfg.dry_run)
+            await handle_spoolman_event(event, se, state, cfg=cfg, dry_run=cfg.dry_run)
             drained_count += 1
         except asyncio.QueueEmpty:
             break
@@ -225,7 +225,7 @@ async def _scan_spoolman_baseline(sm: SpoolmanClient, state: State, cfg: Config)
     not originating from SpoolEase) so that echo suppression and reverse
     lookups work correctly from the start.
 
-    Returns a stats dict with counts of scanned and placeholder entries.
+    Returns a stats dict with counts of scanned and placeholders entries.
     """
     stats = {"scanned": 0, "placeholders": 0}
 
@@ -247,6 +247,8 @@ async def _scan_spoolman_baseline(sm: SpoolmanClient, state: State, cfg: Config)
                 if shadow is None:
                     state.upsert_placeholder(spoolman_id)
                     stats["placeholders"] += 1
+                    if cfg.verbose:
+                        log.debug("[SM→SE] baseline placeholder: spoolman_id=%d (no SpoolEase mapping)", spoolman_id)
 
     except Exception:
         log.exception("[startup] error scanning Spoolman baseline")

@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import logging
 
+from .config import Config
 from .spoolease import SpooleaseClient
 from .state import State
 
 log = logging.getLogger("spoolsync.reconcile_sm_to_se")
 
 
-async def handle_spoolman_event(event: dict, se: SpooleaseClient, state: State, dry_run: bool = False) -> None:
+async def handle_spoolman_event(event: dict, se: SpooleaseClient, state: State,
+                                cfg: Config | None = None, dry_run: bool = False) -> None:
     """Process a Spoolman websocket event and write back to SpoolEase if needed.
 
     Event format:
@@ -37,6 +39,10 @@ async def handle_spoolman_event(event: dict, se: SpooleaseClient, state: State, 
     if not spoolman_spool_id:
         log.warning("spoolman event missing spool id: %s", event)
         return
+
+    verbose = cfg.verbose if cfg else False
+    if verbose:
+        log.debug("[SM→SE] event=%s spool_id=%d", event_type, spoolman_spool_id)
 
     # Echo suppression: Check if this is our own recent write
     if state.is_echo_from_spoolman(spoolman_spool_id, payload):

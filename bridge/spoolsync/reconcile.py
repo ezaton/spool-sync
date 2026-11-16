@@ -41,6 +41,8 @@ def reconcile_once(se: SpooleaseClient, sm: SpoolmanClient, state: State, cfg: C
         shadow = state.get(rec.id)
         if shadow is not None and shadow.content_hash == h and not shadow.archived:
             stats["unchanged"] += 1
+            if cfg.verbose:
+                log.debug("SE→SM id=%s action=unchanged hash=%s", rec.id, h)
             continue
         try:
             density = _resolve_density(rec, density_map, cfg.default_density)
@@ -48,6 +50,8 @@ def reconcile_once(se: SpooleaseClient, sm: SpoolmanClient, state: State, cfg: C
             vendor_id = sm.upsert_vendor(vspec) if vspec else None
             filament_id = sm.upsert_filament(map_filament(rec, density=density, diameter=cfg.default_diameter, default_extruder_temp=cfg.default_extruder_temp), vendor_id)
             if filament_id is None:  # dry-run or failed create
+                if cfg.verbose:
+                    log.debug("SE→SM id=%s action=skip filament_id=null", rec.id)
                 continue
             sspec = map_spool(rec)
             existing_id = shadow.spoolman_spool_id if shadow and shadow.spoolman_spool_id else sm.find_spool_id(sspec)
@@ -63,7 +67,14 @@ def reconcile_once(se: SpooleaseClient, sm: SpoolmanClient, state: State, cfg: C
                 }
                 state.record_write_to_spoolman(spool_id, content_snapshot)
 
-            stats["created" if existing_id is None else "updated"] += 1
+            action = "created" if existing_id is None else "updated"
+            stats[action] += 1
+            if cfg.verbose:
+                log.debug("SE→SM id=%s action=%s vendor=%s filament=%s spoolman_id=%d weight=%.1fg",
+                          rec.id, action,
+                          vspec.name if vspec else "n/a",
+                          rec.material_type, spool_id,
+                          sspec.remaining_weight or 0)
         except Exception:  # keep the loop alive; one bad record shouldn't stall the rest
             log.exception("failed to sync SpoolEase record id=%s", rec.id)
             stats["errors"] += 1
@@ -76,6 +87,8 @@ def reconcile_once(se: SpooleaseClient, sm: SpoolmanClient, state: State, cfg: C
                     sm.archive_spool(shadow.spoolman_spool_id)
                     state.upsert(ShadowRow(sid, shadow.content_hash, shadow.spoolman_spool_id, archived=True))
                     stats["archived"] += 1
+                    if cfg.verbose:
+                        log.debug("SE→SM id=%s action=archived spoolman_id=%d", sid, shadow.spoolman_spool_id)
                 except Exception:
                     log.exception("failed to archive removed SpoolEase id=%s", sid)
                     stats["errors"] += 1

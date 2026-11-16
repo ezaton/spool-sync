@@ -62,6 +62,7 @@ class Config:
     archive_missing: bool  # SpoolEase record gone -> archive (not delete) in Spoolman
     state_path: str  # sqlite file for sync bookkeeping
     log_level: str
+    verbose: bool  # shortcut for LOG_LEVEL=DEBUG (per-record audit logging)
     two_way_sync: bool  # Phase 2: enable Spoolman → SpoolEase write-back via websocket
 
     @staticmethod
@@ -72,6 +73,16 @@ class Config:
         if missing:
             raise SystemExit(f"Missing required environment variables: {', '.join(missing)}")
         assert spoolman_url and spoolease_url  # for type-checkers
+
+        verbose = _get_bool("VERBOSE", False)
+        explicit_log_level = _get("LOG_LEVEL")
+        if explicit_log_level is not None:
+            log_level = explicit_log_level
+        elif verbose:
+            log_level = "DEBUG"
+        else:
+            log_level = "INFO"
+
         return Config(
             spoolman_url=spoolman_url.rstrip("/"),
             spoolease_url=spoolease_url.rstrip("/"),
@@ -85,6 +96,7 @@ class Config:
             dry_run=_get_bool("DRY_RUN", False),
             archive_missing=_get_bool("ARCHIVE_MISSING", True),
             state_path=_get("STATE_PATH", "/state/spoolsync.sqlite") or "/state/spoolsync.sqlite",
-            log_level=_get("LOG_LEVEL", "INFO") or "INFO",
+            log_level=log_level,
+            verbose=verbose,
             two_way_sync=_get_bool("TWO_WAY_SYNC", False),  # Phase 2: disabled by default
         )
