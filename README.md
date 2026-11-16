@@ -28,7 +28,7 @@ deliver robust two-way sync.
 
 | Path | Contents |
 |---|---|
-| [bridge/](bridge/) | **`spoolsync`** — the bridge, phase 1 (one-way SpoolEase → Spoolman). Runnable Python; see [bridge/README.md](bridge/README.md) |
+| [bridge/](bridge/) | **`spoolsync`** — the bridge, two-way sync. Runnable Python; see [bridge/README.md](bridge/README.md) |
 
 ## Source of truth (summary)
 
@@ -54,6 +54,7 @@ docker run -d \
   -e SPOOLEASE_URL=http://spoolease_address \
   -e SPOOLEASE_MODE=encrypted \
   -e SPOOLEASE_SECURITY_KEY=your-6-char-key \
+  -e TWO_WAY_SYNC=true \
   -v spoolsync-state:/state \
   etzion/spoolsync:latest
 ```
@@ -77,27 +78,67 @@ See [bridge/README.md](bridge/README.md) for detailed configuration.
 
 ## Status
 
-- ✅ Design complete (the docs above).
-- ✅ Weight semantics **resolved** from the firmware (`weight_current` = gross scale
+- ✅ **Design complete** — all architecture, data-flow, and mapping docs finalized.
+- ✅ **Weight semantics resolved** from the firmware (`weight_current` = gross scale
   reading; see [data-mapping.md](data-mapping.md#weight-semantics-resolved)).
-- ✅ **Phase 1 complete**: One-way sync SpoolEase → Spoolman working
+- ✅ **Phase 1 complete**: One-way sync SpoolEase → Spoolman
   - Encrypted mode implemented (AES-GCM decryption)
-  - 137 spools, 32 vendors synced successfully
   - Idempotent mapping with shadow state tracking
   - Docker Hub automated builds configured
-- ✅ **Phase 2 bridge complete**: Two-way sync implemented in bridge
+- ✅ **Phase 2 complete**: Two-way sync with real-time write-back
   - Websocket listener for real-time Spoolman changes
   - Echo suppression to prevent sync loops
   - Field ownership (only writes location/comment back)
-  - ⏳ **Requires SpoolEase POST endpoint** - see [PHASE2-SPOOLEASE-ENDPOINT.md](PHASE2-SPOOLEASE-ENDPOINT.md)
-  - Ready to test once endpoint is implemented
+  - Startup sequence with baseline scan and event queue drain
+  - Temperature mapping (98 base filaments, 36 materials)
+  - Comprehensive test suite (68 tests)
+- ✅ **Verbose logging** — `VERBOSE=yes` for per-record audit trail
+- ✅ **Production deployed** on `block` machine — 179 spools synced, both directions working
 
-**👉 See [PHASE2-README.md](PHASE2-README.md) for Phase 2 details and testing**
-- ✅ **Phase 1 bridge written** — one-way SpoolEase → Spoolman, in [bridge/](bridge/).
-  ⚠️ Not yet executed (no Python/Docker on the authoring machine); run its tests and a
-  `DRY_RUN=true` pass before trusting it. Needs the SpoolEase JSON endpoint
-  ([spoolease-endpoints.md](spoolease-endpoints.md)).
-- ⬜ Phase 2 (Spoolman → SpoolEase write-back) — designed in
-  [data-flow.md](data-flow.md), not yet implemented.
-- ⬜ Remaining open questions (diameter/density confirmation, material convention) in
-  [data-mapping.md](data-mapping.md#open-questions-verify-before-building).
+### What's running in production
+
+- **Bridge**: `etzion/spoolsync:latest` on `block` (via docker-compose)
+- **Sync direction**: Two-way (SpoolEase ↔ Spoolman)
+- **SpoolEase mode**: encrypted (AES-256-GCM, 7-char device key)
+- **Poll interval**: 30 seconds
+- **Spoolman websocket**: real-time event listener for write-backs
+- **Shadow store**: SQLite at `./spoolsync-state/spoolsync.sqlite`
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `SPOOLMAN_URL` | *(required)* | Spoolman API base URL |
+| `SPOOLEASE_URL` | *(required)* | SpoolEase base URL |
+| `SPOOLEASE_MODE` | `json` | `json` or `encrypted` |
+| `SPOOLEASE_TOKEN` | — | Bearer token for JSON mode |
+| `SPOOLEASE_SECURITY_KEY` | — | 7-char key for encrypted mode |
+| `TWO_WAY_SYNC` | `false` | Enable Spoolman → SpoolEase write-back |
+| `DEFAULT_DIAMETER` | `1.75` | Fallback filament diameter (mm) |
+| `DEFAULT_DENSITY` | `1.24` | Fallback density (g/cm³) |
+| `DEFAULT_EXTRUDER_TEMP` | `215` | Fallback extruder temp (°C) |
+| `SYNC_INTERVAL_SECONDS` | `30` | Poll interval |
+| `DRY_RUN` | `false` | Log writes without executing |
+| `ARCHIVE_MISSING` | `true` | Archive spools removed from SpoolEase |
+| `VERBOSE` | `false` | Enable per-record DEBUG-level audit logging |
+| `LOG_LEVEL` | auto | Python log level; auto-sets to `DEBUG` when `VERBOSE=yes` |
+| `STATE_PATH` | `/state/spoolsync.sqlite` | Shadow store SQLite path |
+
+### Example docker-compose
+
+```yaml
+services:
+  spoolsync:
+    image: etzion/spoolsync:latest
+    environment:
+      SPOOLMAN_URL: http://spoolman:8000/api/v1
+      SPOOLEASE_URL: http://192.168.0.120
+      SPOOLEASE_MODE: encrypted
+      SPOOLEASE_SECURITY_KEY: your-key
+      TWO_WAY_SYNC: "true"
+      VERBOSE: "yes"  # enable per-record audit logging
+    volumes:
+      - ./spoolsync-state:/state
+```
