@@ -247,7 +247,7 @@ class SpooleaseClient:
 
         # Parse CSV with adapted fields (base64 floats, y/n bools)
         # Note: CSV has NO header row, so we must specify field names manually
-        # Field order matches SpoolCsvColumn from SpoolEaseConsole.cs
+        # Field order matches SpoolCsvColumn from SpoolEase firmware
         csv_text = plaintext.decode("utf-8")
         field_names = [
             "id", "tag_id", "material_type", "material_subtype", "color_name", "color_code",

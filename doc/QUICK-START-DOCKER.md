@@ -7,21 +7,20 @@ Get SpoolSync running in 5 minutes!
 **Best for:** New installations or testing
 
 ```bash
-# 1. Copy the example
-cp docker-compose.example.yml docker-compose.yml
+# 1. Copy the consolidated config
+cp docker/docker-compose.yml docker-compose.yml
 
 # 2. Edit configuration
 nano docker-compose.yml
 # Change these lines:
-#   - image: etzion/spoolsync:latest
-#   - SPOOLEASE_URL: http://<spoolease_address>  (your SpoolEase IP)
+#   - SPOOLEASE_URL: http://192.168.0.120  (your SpoolEase IP)
 #   - SPOOLEASE_SECURITY_KEY: "123456"     (your device key)
 
 # 3. Start services
-docker-compose up -d
+docker compose up -d
 
 # 4. Watch logs
-docker-compose logs -f spoolsync
+docker compose logs -f spoolsync
 
 # 5. Access Spoolman
 open http://localhost:7912
@@ -29,7 +28,7 @@ open http://localhost:7912
 
 **You should see:**
 ```
-INFO    spoolsync starting: SpoolEase=http://<spoolease_address> -> Spoolman=...
+INFO    spoolsync starting: SpoolEase=http://192.168.0.120 -> Spoolman=...
 INFO    loaded 34 material densities from Spoolman external DB
 INFO    reconcile: {'created': 137, 'updated': 0, ...}
 ```
@@ -39,50 +38,45 @@ INFO    reconcile: {'created': 137, 'updated': 0, ...}
 **Best for:** Already running Spoolman
 
 ```bash
-# 1. Copy the simple config
-cp docker-compose.simple.yml docker-compose.yml
+# 1. Copy the consolidated config
+cp docker/docker-compose.yml docker-compose.yml
 
 # 2. Edit configuration
 nano docker-compose.yml
-# Change:
-#   - image: etzion/spoolsync:latest
-#   - SPOOLEASE_URL: http://<spoolease_address>
-#   - SPOOLEASE_SECURITY_KEY: "123456"
+# - Comment out the spoolman service
+# - Uncomment network_mode: "container:spoolman"
+#   or connect to Spoolman's existing network
 
-# 3. If Spoolman uses custom network:
-#    Uncomment the networks section and set correct name
+# 3. Start SpoolSync
+docker compose up -d
 
-# 4. Start SpoolSync
-docker-compose up -d
-
-# 5. Verify
-docker-compose logs -f spoolsync
+# 4. Verify
+docker compose logs -f spoolsync
 ```
 
-## Option 3: Phase 2 Two-Way Sync
+## Option 3: Two-Way Sync
 
-**Best for:** Real-time sync (requires SpoolEase endpoint)
+**Best for:** Real-time bidirectional sync (requires SpoolEase JSON endpoint)
 
 ```bash
 # 1. Implement SpoolEase POST endpoint first!
-#    See: PHASE2-SPOOLEASE-ENDPOINT.md
+#    See: doc/DESIGN.md#spoolease-json-endpoint-design
 
-# 2. Copy Phase 2 config
-cp docker-compose.phase2.yml docker-compose.yml
+# 2. Copy config
+cp docker/docker-compose.yml docker-compose.yml
 
 # 3. Edit configuration
 nano docker-compose.yml
-# Change:
-#   - image: etzion/spoolsync:latest
-#   - SPOOLEASE_URL: http://<spoolease_address>
+# Uncomment:
+#   - SPOOLEASE_MODE: json
 #   - SPOOLEASE_TOKEN: "your-secure-token"
 #   - TWO_WAY_SYNC: "true"
 
 # 4. Start services
-docker-compose up -d
+docker compose up -d
 
 # 5. Watch for websocket connection
-docker-compose logs -f spoolsync | grep websocket
+docker compose logs -f spoolsync | grep websocket
 ```
 
 **You should see:**
@@ -140,8 +134,8 @@ After starting, verify everything works:
 ```bash
 # Add SPOOLMAN_URL and SPOOLEASE_URL to docker-compose.yml
 environment:
-  SPOOLMAN_URL: http://<spoolman_address>/api/v1
-  SPOOLEASE_URL: http://<spoolease_address>
+  SPOOLMAN_URL: http://spoolman:8000/api/v1
+  SPOOLEASE_URL: http://192.168.0.120
 ```
 
 ### Issue: "Connection refused" to SpoolEase
@@ -149,7 +143,7 @@ environment:
 **Fix:**
 ```bash
 # Test from host machine first
-curl http://<spoolease_address>/api/spools
+curl http://192.168.0.120/api/spools
 
 # If that works, it's a Docker networking issue
 # Try using host networking:
@@ -173,7 +167,7 @@ docker-compose up -d
 **Check:**
 ```bash
 # 1. Verify SpoolEase is accessible
-docker-compose exec spoolsync curl http://<spoolease_address>/api/spools
+docker-compose exec spoolsync curl http://192.168.0.120/api/spools
 
 # 2. Check security key is correct
 # Look for "InvalidTag" error in logs
@@ -189,8 +183,8 @@ docker-compose logs -f spoolsync
 ### Required Variables
 
 ```yaml
-SPOOLMAN_URL: http://<spoolman_address>/api/v1  # Spoolman API
-SPOOLEASE_URL: http://<spoolease_address>        # SpoolEase IP
+SPOOLMAN_URL: http://spoolman:8000/api/v1  # Spoolman API
+SPOOLEASE_URL: http://192.168.0.120        # SpoolEase IP
 SPOOLEASE_MODE: encrypted                  # or json
 SPOOLEASE_SECURITY_KEY: "123456"           # Your key
 ```
@@ -254,15 +248,16 @@ docker-compose down -v
 1. ✅ **Verify sync is working** - Check Spoolman UI
 2. ✅ **Set up monitoring** - Watch logs occasionally
 3. ✅ **Configure backups** - See DOCKER-COMPOSE-GUIDE.md
-4. ⏳ **Implement Phase 2** - See PHASE2-SPOOLEASE-ENDPOINT.md
+4. ⏳ **Implement SpoolEase JSON endpoint** - See doc/DESIGN.md#spoolease-json-endpoint-design
 5. ✅ **Push to GitHub** - `git push origin main`
 6. ✅ **Update Docker Hub** - Happens automatically via Actions
 
 ## Getting Help
 
 - **Full guide**: [DOCKER-COMPOSE-GUIDE.md](DOCKER-COMPOSE-GUIDE.md)
-- **Phase 2 details**: [PHASE2-README.md](PHASE2-README.md)
 - **Troubleshooting**: Check logs first: `docker-compose logs spoolsync`
+- **Bridge Setup**: See [../../bridge/README.md](../../bridge/README.md)
+- **Full Design**: See [../DESIGN.md](../DESIGN.md)
 
 ## Success!
 

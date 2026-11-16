@@ -1,0 +1,152 @@
+# SpoolSync — Docker Compose
+#
+# This file covers all deployment modes. Uncomment the section that matches your setup.
+#
+# Modes:
+#   1. Encrypted (default) — works with current SpoolEase firmware, no changes needed
+#   2. JSON mode — requires the optional SpoolEase JSON endpoint (see doc/DESIGN.md)
+#   3. Two-way sync — JSON mode + TWO_WAY_SYNC=true (requires SpoolEase POST endpoint)
+#
+# Quick start:
+#   cp docker/docker-compose.yml docker-compose.yml
+#   # edit the settings below
+#   docker compose up -d
+#
+# ============================================================================
+# NOTE: This file includes BOTH Spoolman and SpoolSync. If you already have
+# Spoolman running elsewhere, comment out the 'spoolman' service and the
+# 'depends_on' block, then update SPOOLMAN_URL to point to your instance.
+# ============================================================================
+
+services:
+  # ──────────────────────────────────────────────
+  # Spoolman (optional — include if you don't
+  # already have Spoolman running elsewhere)
+  # ──────────────────────────────────────────────
+  spoolman:
+    image: ghcr.io/donkie/spoolman:latest
+    container_name: spoolman
+    restart: unless-stopped
+    volumes:
+      - spoolman-data:/home/app/.local/share/spoolman
+    ports:
+      - "7912:8000"
+    networks:
+      - spoolsync-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ──────────────────────────────────────────────
+  # SpoolSync bridge
+  # ──────────────────────────────────────────────
+  spoolsync:
+    # ── Image (choose one) ──
+    # Use published image from Docker Hub:
+    image: etzion/spoolsync:latest
+
+    # Or build locally from source:
+    # build:
+    #   context: ../bridge
+    #   dockerfile: ../bridge/Dockerfile
+
+    container_name: spoolsync
+    restart: unless-stopped
+
+    # Depends on spoolman only if both services run in this compose file.
+    # If Spoolman is external, remove this depends_on block.
+    depends_on:
+      spoolman:
+        condition: service_healthy
+
+    # ──────────────────────────────────────────────
+    # Environment variables — uncomment ONE mode below
+    # ──────────────────────────────────────────────
+    environment:
+
+      # ── Spoolman / SpoolEase endpoints ──
+      # Replace 'spoolman_ip' with your Spoolman hostname or IP.
+      # Use 'spoolman' if both services are in this compose file.
+      SPOOLMAN_URL: http://spoolman_ip:8000/api/v1
+
+      # Replace 'spoolease_ip' with your SpoolEase console IP address.
+      SPOOLEASE_URL: http://spoolease_ip
+
+      # ── Mode 1: Encrypted (default — works out of the box) ──
+      # Re-implements AES-GCM to read the stock /api/spools CSV blob.
+      # No SpoolEase firmware change needed.
+      SPOOLEASE_MODE: encrypted
+      SPOOLEASE_SECURITY_KEY: "1234567"
+
+      # ── Mode 2: JSON mode ──
+      # Uncomment these lines and comment out the encrypted lines above
+      # if you have implemented the SpoolEase JSON endpoint
+      # (see doc/DESIGN.md#spoolease-json-endpoint-design).
+      # SPOOLEASE_MODE: json
+      # SPOOLEASE_TOKEN: "your-secure-token"
+
+      # ── Mode 3: Two-way sync ──
+      # Uncomment to enable real-time Spoolman → SpoolEase write-back.
+      # Requires JSON mode (SPOOLEASE_MODE=json + SPOOLEASE_TOKEN set).
+      # TWO_WAY_SYNC: "true"
+
+      # ── Filament defaults ──
+      # Filament diameter (mm). SpoolEase doesn't store this; 1.75 covers
+      # virtually all consumer printers.
+      DEFAULT_DIAMETER: "1.75"
+
+      # Fallback density (g/cm³) for materials not in Spoolman's
+      # /external/material catalog. PLA≈1.24, PETG≈1.27, ABS≈1.04.
+      DEFAULT_DENSITY: "1.24"
+
+      # Fallback extruder temperature (°C) for unknown/custom filaments.
+      DEFAULT_EXTRUDER_TEMP: "215"
+
+      # ── Sync behavior ──
+      # How often to poll SpoolEase for changes (seconds).
+      SYNC_INTERVAL_SECONDS: "30"
+
+      # Log writes without executing them (useful for testing).
+      DRY_RUN: "false"
+
+      # Archive spools in Spoolman when they disappear from SpoolEase
+      # (rather than deleting them, preserving history).
+      ARCHIVE_MISSING: "true"
+
+      # ── Advanced ──
+      # Path for the SQLite shadow store (id mappings, content hashes,
+      # echo suppression state). Must be a persistent volume.
+      STATE_PATH: /state/spoolsync.sqlite
+
+      # Python log level. Set to DEBUG for per-record audit logging.
+      LOG_LEVEL: INFO
+
+    volumes:
+      # Persist sync state across restarts.
+      - spoolsync-state:/state
+
+    networks:
+      - spoolsync-network
+
+    # Optional: resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '0.5'
+    #       memory: 256M
+    #     reservations:
+    #       cpus: '0.1'
+    #       memory: 64M
+
+# ── Named volumes ──
+volumes:
+  spoolman-data:
+  spoolsync-state:
+
+# ── Network ──
+networks:
+  spoolsync-network:
+    driver: bridge

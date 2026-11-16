@@ -16,7 +16,7 @@ Automatically builds and publishes Docker images when you:
 - Security: Uses secrets for credentials
 
 ### 2. Docker Compose Configuration
-**File**: `bridge/docker-compose.yml`
+**File**: `docker/docker-compose.yml`
 
 Production-ready docker-compose configuration that:
 - Uses published Docker Hub image
@@ -25,10 +25,10 @@ Production-ready docker-compose configuration that:
 - Sets up health checks
 
 ### 3. Documentation
-- **DOCKER-SETUP.md**: Complete setup guide
+- **doc/DOCKER-COMPOSE-GUIDE.md**: Complete deployment guide
+- **doc/QUICK-START-DOCKER.md**: Quick start guide
+- **doc/GITHUB-ACTIONS-SUMMARY.md**: This file
 - **bridge/README.md**: Updated with Docker instructions
-- **.github/workflows/README.md**: Workflow documentation
-- **README.md**: Added quick start section
 
 ### 4. Build Optimization
 - **bridge/.dockerignore**: Excludes unnecessary files from image
@@ -51,9 +51,9 @@ Add two secrets:
 
 ### Step 2: Update Docker Compose
 
-Edit `bridge/docker-compose.yml` line 5:
+Edit `docker/docker-compose.yml` line 5:
 ```yaml
-image: etzion/spoolsync:latest  # <-- Change 'etzion'
+image: yourusername/spoolsync:latest  # <-- Change 'yourusername'
 ```
 
 ### Step 3: Commit and Push
@@ -86,15 +86,15 @@ git push origin v1.0.0
 1. **GitHub Actions triggers** when you push
 2. **Builds Docker image** for both architectures
 3. **Pushes to Docker Hub** as:
-   - `etzion/spoolsync:latest`
-   - `etzion/spoolsync:1.0.0` (if tagged)
-   - `etzion/spoolsync:1.0`
-   - `etzion/spoolsync:1`
+   - `yourusername/spoolsync:latest`
+   - `yourusername/spoolsync:1.0.0` (if tagged)
+   - `yourusername/spoolsync:1.0`
+   - `yourusername/spoolsync:1`
 
 4. **Users can pull and run**:
    ```bash
-   docker pull etzion/spoolsync:latest
-   docker run -d -e SPOOLMAN_URL=... etzion/spoolsync:latest
+   docker pull yourusername/spoolsync:latest
+   docker run -d -e SPOOLMAN_URL=... yourusername/spoolsync:latest
    ```
 
 ## Features Included in Phase 1
