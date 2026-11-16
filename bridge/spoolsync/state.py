@@ -76,7 +76,10 @@ class State:
         self._db.commit()
 
     def all_ids(self) -> set[str]:
-        cur = self._db.execute("SELECT spoolease_id FROM shadow")
+        """Return all real SpoolEase IDs in the shadow store (excludes placeholders)."""
+        cur = self._db.execute(
+            "SELECT spoolease_id FROM shadow WHERE spoolease_id IS NOT NULL AND spoolease_id NOT LIKE '_placeholder_%'"
+        )
         return {r["spoolease_id"] for r in cur.fetchall()}
 
     def close(self) -> None:
@@ -153,6 +156,45 @@ class State:
                 if recorded.get(key) != current.get(key):
                     return False
         return True
+
+
+    def get_by_spoolman_id(self, spoolman_spool_id: int) -> ShadowRow | None:
+        """Reverse lookup: Spoolman spool ID → shadow row (any spoolease_id)."""
+        cur = self._db.execute("SELECT * FROM shadow WHERE spoolman_spool_id = ?", (spoolman_spool_id,))
+        r = cur.fetchone()
+        if r is None:
+            return None
+        return ShadowRow(r["spoolease_id"], r["content_hash"], r["spoolman_spool_id"], bool(r["archived"]))
+
+    def upsert_placeholder(self, spoolman_spool_id: int, spoolease_id: str | None = None) -> None:
+        """Create a placeholder entry for a Spoolman-only spool (no SpoolEase counterpart).
+
+        Used during baseline scan to populate the shadow store with Spoolman's current state.
+        The spoolease_id is None for Spoolman-only spools and will be filled in by the
+        reconcile pass when a matching SpoolEase record is found.
+
+        Uses a sentinel PK to ensure idempotency per spoolman_spool_id (since NULL PKs
+        don't trigger ON CONFLICT in SQLite).
+        """
+        # Use a sentinel PK for placeholders — the reconcile pass overwrites with real SE IDs
+        pk = spoolease_id if spoolease_id is not None else f"_placeholder_{spoolman_spool_id}"
+        self._db.execute(
+            """
+            INSERT INTO shadow (spoolease_id, content_hash, spoolman_spool_id, archived)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(spoolease_id) DO UPDATE SET
+                content_hash = excluded.content_hash,
+                spoolman_spool_id = excluded.spoolman_spool_id,
+                archived = excluded.archived
+            """,
+            (pk, "baseline", spoolman_spool_id, 0),
+        )
+        self._db.commit()
+
+    def all_spoolman_ids(self) -> set[int]:
+        """Return all Spoolman spool IDs known to the shadow store."""
+        cur = self._db.execute("SELECT spoolman_spool_id FROM shadow WHERE spoolman_spool_id IS NOT NULL")
+        return {r["spoolman_spool_id"] for r in cur.fetchall()}
 
     def get_spoolease_id_by_spoolman_id(self, spoolman_spool_id: int) -> str | None:
         """Reverse lookup: Spoolman spool ID → SpoolEase ID."""

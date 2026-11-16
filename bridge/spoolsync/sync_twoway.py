@@ -3,6 +3,15 @@
 Runs two concurrent sync loops:
 1. SpoolEase → Spoolman (polling, same as phase 1)
 2. Spoolman → SpoolEase (websocket-driven, real-time)
+
+Startup sequence (Phase B):
+1. Connect to Spoolman websocket (start listening immediately)
+2. Queue incoming events in a thread-safe buffer
+3. Poll SpoolEase → populate baseline
+4. Poll Spoolman → populate baseline
+5. Diff both → populate shadow store (SQLite)
+6. Drain queued events → apply changes that arrived during scan
+7. Enter normal operation: process websocket events in real-time
 """
 
 from __future__ import annotations
@@ -34,7 +43,17 @@ class _Stop:
 
 
 async def run_twoway(cfg: Config) -> None:
-    """Run two-way sync with concurrent polling and websocket listening."""
+    """Run two-way sync with concurrent polling and websocket listening.
+
+    Implements a startup sequence that prevents noisy "no mapping" warnings:
+    1. Connect websocket (listen immediately)
+    2. Queue events during initial scan
+    3. Poll SpoolEase → populate baseline
+    4. Poll Spoolman → populate baseline
+    5. Diff both → populate shadow store
+    6. Drain queued events
+    7. Normal operation (direct processing)
+    """
     logging.basicConfig(level=cfg.log_level, format="%(asctime)s %(name)-22s %(levelname)-7s %(message)s")
     log.info("spoolsync TWO-WAY starting: SpoolEase=%s <-> Spoolman=%s (mode=%s, interval=%ss, dry_run=%s)",
              cfg.spoolease_url, cfg.spoolman_url, cfg.spoolease_mode, cfg.poll_interval_seconds, cfg.dry_run)
@@ -52,7 +71,11 @@ async def run_twoway(cfg: Config) -> None:
         density_map = sm.external_material_densities()
         log.info("loaded %d material densities from Spoolman external DB", len(density_map))
 
-        # Create event handler callback for websocket
+        # --- Startup sequence with queue drain ---
+        await _startup_sequence(se, sm, state, cfg, density_map, stop)
+
+        # --- Normal operation: both loops running concurrently ---
+        # Create event handler callback for websocket (direct processing, no queue)
         async def on_spoolman_event(event: dict) -> None:
             await handle_spoolman_event(event, se, state, dry_run=cfg.dry_run)
 
@@ -67,6 +90,168 @@ async def run_twoway(cfg: Config) -> None:
         sm.close()
         state.close()
         log.info("spoolsync stopped")
+
+
+async def _startup_sequence(se: SpooleaseClient, sm: SpoolmanClient, state: State,
+                            cfg: Config, density_map: dict[str, float], stop: _Stop) -> None:
+    """Execute the startup sequence: connect websocket, queue events, build baseline, drain.
+
+    Steps:
+    1. Start websocket listener in background (with event queueing)
+    2. Run initial reconcile pass (SpoolEase → Spoolman)
+    3. Run initial Spoolman baseline scan
+    4. Drain queued events
+    5. Log completion and transition to normal operation
+    """
+    log.info("starting startup sequence: building baseline shadow store")
+
+    # Step 1: Create a queue for events during startup
+    event_queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=1000)
+    startup_done = asyncio.Event()
+
+    # Step 2: Start websocket listener in background, queuing events during startup
+    async def _startup_websocket_listener() -> None:
+        """Websocket listener that queues events during startup, then processes directly."""
+        try:
+            import json
+            import websockets
+
+            ws_url = sm._base.replace("http://", "ws://").replace("https://", "wss://") + "/spool"
+            retry_delay = 1.0
+            max_retry_delay = 60.0
+
+            while not stop.flag:
+                try:
+                    log.info("[startup] connecting to Spoolman websocket: %s", ws_url)
+                    async with websockets.connect(ws_url, ping_interval=30, ping_timeout=10) as websocket:
+                        log.info("[startup] websocket connected, queuing events during baseline scan...")
+                        retry_delay = 1.0
+
+                        async for message in websocket:
+                            if stop.flag:
+                                return
+                            try:
+                                event = json.loads(message)
+                                if startup_done.is_set():
+                                    # Startup complete: process directly
+                                    await handle_spoolman_event(event, se, state, dry_run=cfg.dry_run)
+                                else:
+                                    # Still in startup: queue the event
+                                    try:
+                                        event_queue.put_nowait(event)
+                                    except asyncio.QueueFull:
+                                        log.warning("[startup] event queue full, dropping oldest event")
+                                        # Remove oldest to make room
+                                        try:
+                                            event_queue.get_nowait()
+                                            event_queue.put_nowait(event)
+                                        except asyncio.QueueEmpty:
+                                            pass
+                            except json.JSONDecodeError:
+                                log.warning("[startup] received non-JSON websocket message, skipping")
+                            except Exception:
+                                log.exception("[startup] error processing websocket event")
+                except websockets.exceptions.ConnectionClosed:
+                    log.warning("[startup] websocket connection closed, reconnecting in %ss", retry_delay)
+                except (OSError, ConnectionError) as e:
+                    log.warning("[startup] websocket connection error: %s, reconnecting in %ss", e, retry_delay)
+                except asyncio.CancelledError:
+                    log.info("[startup] websocket listener cancelled")
+                    return
+                except Exception:
+                    log.exception("[startup] websocket listener error, reconnecting in %ss", retry_delay)
+
+                if not stop.flag:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 2, max_retry_delay)
+
+        except asyncio.CancelledError:
+            log.info("[startup] websocket listener cancelled")
+            raise
+        except Exception:
+            log.exception("[startup] websocket listener failed")
+            stop.flag = True
+
+    ws_task = asyncio.create_task(_startup_websocket_listener())
+
+    # Step 3: Run initial reconcile pass (SpoolEase → Spoolman)
+    # This populates the shadow store with SpoolEase data
+    log.info("[startup] running initial SpoolEase → Spoolman reconcile pass")
+    try:
+        stats = reconcile_once(se, sm, state, cfg, density_map)
+        log.info("[startup] initial SE→SM reconcile: %s", stats)
+    except Exception:
+        log.exception("[startup] initial SE→SM reconcile pass failed")
+
+    # Step 4: Run initial Spoolman baseline scan
+    # This populates the shadow store with Spoolman data that may not be in SpoolEase
+    log.info("[startup] running initial Spoolman baseline scan")
+    try:
+        stats = await _scan_spoolman_baseline(sm, state, cfg)
+        log.info("[startup] initial SM baseline scan: %s", stats)
+    except Exception:
+        log.exception("[startup] initial SM baseline scan failed")
+
+    # Step 5: Signal that startup is complete
+    startup_done.set()
+    log.info("[startup] baseline complete, switching websocket listener to direct processing")
+
+    # Step 6: Drain queued events
+    drained_count = 0
+    while not event_queue.empty():
+        try:
+            event = event_queue.get_nowait()
+            await handle_spoolman_event(event, se, state, dry_run=cfg.dry_run)
+            drained_count += 1
+        except asyncio.QueueEmpty:
+            break
+
+    log.info("[startup] startup sequence complete: drained %d queued events", drained_count)
+
+    # Step 7: Cancel the startup websocket listener (normal listener will take over)
+    ws_task.cancel()
+    try:
+        await ws_task
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        log.exception("[startup] startup websocket listener error on cancel")
+
+
+async def _scan_spoolman_baseline(sm: SpoolmanClient, state: State, cfg: Config) -> dict[str, int]:
+    """Scan Spoolman's current spool data and populate the shadow store.
+
+    This ensures the shadow store has entries for Spoolman-only spools (those
+    not originating from SpoolEase) so that echo suppression and reverse
+    lookups work correctly from the start.
+
+    Returns a stats dict with counts of scanned and placeholder entries.
+    """
+    stats = {"scanned": 0, "placeholders": 0}
+
+    try:
+        spools = sm.get_all_spools()
+        stats["scanned"] = len(spools)
+
+        for spool in spools:
+            spoolman_id = spool.get("id")
+            if not spoolman_id:
+                continue
+
+            # Only create placeholders for Spoolman-only spools (no external_id)
+            # The reconcile pass will fill in the real spoolease_id for SpoolEase-originated spools
+            external_id = spool.get("external_id", "")
+            if not external_id.startswith("se-fil:"):
+                # Spoolman-only spool — create a placeholder
+                shadow = state.get_by_spoolman_id(spoolman_id)
+                if shadow is None:
+                    state.upsert_placeholder(spoolman_id)
+                    stats["placeholders"] += 1
+
+    except Exception:
+        log.exception("[startup] error scanning Spoolman baseline")
+
+    return stats
 
 
 async def _poll_spoolease_to_spoolman(se: SpooleaseClient, sm: SpoolmanClient, state: State,
