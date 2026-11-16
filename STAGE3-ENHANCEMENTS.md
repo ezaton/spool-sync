@@ -3,7 +3,7 @@
 ## Status
 🟢 **Phase A Complete** — Temperature mapping implemented and verified  
 🟢 **Phase B Complete** — Startup sequence with queue drain implemented  
-🔵 **Phase C Planned** — `map_sm_to_se()` mapper function  
+🟢 **Phase C Complete** — `map_sm_to_se()` mapper function implemented  
 🔵 **Phase D Planned** — Phase 2 tests
 
 ---
@@ -121,50 +121,42 @@ The reconcile pass creates a real mapping (`se-xyz789`) but the placeholder (`_p
 
 ---
 
-## Phase C: `map_sm_to_se()` Mapper Function 🔵 PLANNED
+## Phase C: `map_sm_to_se()` Mapper Function ✅ COMPLETE
 
-### Current State
-There is no `map_sm_to_se()` function in `mapper.py`. The `write_record()` method in `spoolease.py` manually constructs the DTO by:
-1. Fetching the current record via `get_spool_by_id()`
-2. Building a dict with all SpoolEase fields
-3. Merging in the Spoolman-owned updates
+### What Was Done
+Extracted the SpoolEase DTO construction from `spoolease.write_record()` into a pure, testable function `map_sm_to_se()` in `mapper.py`.
 
-### Problem
-The mapping logic is scattered across the write-back path instead of being a single pure function. It's less maintainable and harder to test.
+### Changes Made
 
-### Design
-A dedicated `map_sm_to_se()` function that converts a Spoolman spool entity (from the websocket event payload) into a SpoolEase DTO ready for POST to `/api/spools/add-edit`.
-
-### DTO Shape for Write-Back
-```json
-{
-  "id": "abc123",
-  "tag_id": "",
-  "rgba": "FF8800",
-  "color_name": "Orange",
-  "material": "PLA",
-  "subtype": "Matte",
-  "brand": "Bambu",
-  "core_weight": 10,
-  "label_weight": 250,
-  "note": "Comment from Spoolman",
-  "slicer_filament": "GFA01",
-  "full_unused": "y",
-  "assigned_location": "",
-  "actual_location": "Drawer 1",
-  "spools_count": 1
-}
+#### 1. `mapper.py` — Added `map_sm_to_se()` function
+```python
+def map_sm_to_se(cached_spoolease: dict, updates: dict) -> dict:
 ```
+- Takes a cached SpoolEase record dict and a dict of Spoolman-owned updates (`location`, `comment`)
+- Returns a complete DTO matching `AddOrEditSpoolRequest` shape for POST `/api/spools/add-edit`
+- SpoolEase-owned fields (tag_id, material, color, brand, etc.) come from cache
+- Spoolman-owned fields (`actual_location` ← `location`, `note` ← `comment`) come from updates
+- Optional fields (`stock`, `td`) included only when not None
+- `full_unused`: converts bool → `"y"/"n"`
 
-### Implementation Plan
-- Add `map_sm_to_se()` in `mapper.py` — pure function, takes Spoolman payload + cached SpoolEase record
-- Update `write_record()` in `spoolease.py` to call `map_sm_to_se()` instead of building the dict inline
-- Add unit tests for `map_sm_to_se()` in `tests/test_mapper.py`
+#### 2. `spoolease.py` — Refactored `write_record()`
+- Removed 30 lines of inline dict construction
+- Now calls `map_sm_to_se(current, updates)` — a single line
+- Import added: `from .mapper import map_sm_to_se`
 
-### Files to Modify
-- `bridge/spoolsync/mapper.py` — add `map_sm_to_se()` function
-- `bridge/spoolsync/spoolease.py` — refactor `write_record()` to use the mapper
-- `bridge/tests/test_mapper.py` — add tests for `map_sm_to_se()`
+#### 3. `tests/test_mapper.py` — Added 6 tests
+- `test_map_sm_to_se_preserves_spoolease_fields` — verifies tag_id, material, color, brand from cache
+- `test_map_sm_to_se_overwrites_location` — verifies actual_location from updates
+- `test_map_sm_to_se_overwrites_comment` — verifies note from updates.comment
+- `test_map_sm_to_se_empty_updates` — verifies defaults to empty when no updates
+- `test_map_sm_to_se_bool_conversion` — verifies added_full bool → "y"/"n"
+- `test_map_sm_to_se_optional_fields` — verifies stock/td only included when not None
+
+### Verification
+- All 26 tests pass (1 pre-existing failure in `test_vendor_and_filament_identity_are_stable_and_dedupe`, unrelated)
+- All 6 new Phase C tests pass
+- `mapper.py` and `spoolease.py` pass syntax validation
+- Behavior is identical to pre-refactor — same fields, same values, same HTTP payload
 
 ---
 
@@ -206,7 +198,7 @@ The current implementation writes `location` → `actual_location` and `comment`
 |------|------|----------|--------|
 | Temperature mapping | Enhancement | Medium | ✅ **COMPLETE** |
 | Startup sequence with queue drain | Gap | High | ✅ **COMPLETE** |
-| `map_sm_to_se()` mapper function | Gap | Medium | 🔵 PLANNED |
+| `map_sm_to_se()` mapper function | Gap | Medium | ✅ **COMPLETE** |
 | Phase 2 tests | Gap | Medium | 🔵 PLANNED |
 | Shadow store schema | Gap | Low | ✅ Kept as-is |
 | Location/Comment write-back | Gap | Low | ✅ Kept as-is |

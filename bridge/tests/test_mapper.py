@@ -11,7 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from spoolsync.mapper import (  # noqa: E402
+from spoolsync.mapper import (
+    map_sm_to_se,  # noqa: E402
     compute_remaining,
     filament_external_id,
     map_extruder_temp,
@@ -172,3 +173,102 @@ def test_map_filament_uses_custom_default_for_unknown():
                       weight_core=100, slicer_filament="")
     f = map_filament(rec, density=1.0, diameter=1.75, default_extruder_temp=180)
     assert f.settings_extruder_temp == 180
+
+
+# ---------------------------------------------------------------------------
+# Phase C: map_sm_to_se() tests
+# ---------------------------------------------------------------------------
+
+def _make_cached(**overrides) -> dict:
+    """Build a minimal cached SpoolEase record dict."""
+    base = {
+        "id": "se-test01",
+        "tag_id": "AABBCCDD",
+        "color_code": "FF8800FF",
+        "color_name": "Orange",
+        "material_type": "PLA",
+        "material_subtype": "Matte",
+        "brand": "Bambu",
+        "weight_core": 250,
+        "weight_advertised": 1000,
+        "note": "Old note",
+        "slicer_filament": "GFA01",
+        "added_full": True,
+        "assigned_location": "",
+        "actual_location": "Old location",
+        "spools_count": 1,
+        "stock": None,
+        "td": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_map_sm_to_se_preserves_spoolease_fields():
+    """Verify SpoolEase-owned fields come from cache, not from updates."""
+    cached = _make_cached()
+    updates = {"location": "Drawer 1"}
+    payload = map_sm_to_se(cached, updates)
+
+    assert payload["id"] == "se-test01"
+    assert payload["tag_id"] == "AABBCCDD"
+    assert payload["material"] == "PLA"
+    assert payload["subtype"] == "Matte"
+    assert payload["brand"] == "Bambu"
+    assert payload["core_weight"] == 250
+    assert payload["label_weight"] == 1000
+    assert payload["slicer_filament"] == "GFA01"
+    assert payload["full_unused"] == "y"
+    assert payload["spools_count"] == 1
+
+
+def test_map_sm_to_se_overwrites_location():
+    """Verify actual_location comes from updates, not from cached actual_location."""
+    cached = _make_cached(actual_location="Old location")
+    updates = {"location": "Drawer 1"}
+    payload = map_sm_to_se(cached, updates)
+    assert payload["actual_location"] == "Drawer 1"
+
+
+def test_map_sm_to_se_overwrites_comment():
+    """Verify note comes from updates.comment, not from cached note."""
+    cached = _make_cached(note="Old note")
+    updates = {"comment": "New comment from Spoolman"}
+    payload = map_sm_to_se(cached, updates)
+    assert payload["note"] == "New comment from Spoolman"
+
+
+def test_map_sm_to_se_empty_updates():
+    """With no updates, Spoolman-owned fields default to empty strings."""
+    cached = _make_cached(actual_location="Garage", note="Cache note")
+    updates = {}
+    payload = map_sm_to_se(cached, updates)
+    assert payload["actual_location"] == ""  # no location in updates
+    assert payload["note"] == ""  # no comment in updates (note comes from updates)
+
+
+def test_map_sm_to_se_bool_conversion():
+    """Verify added_full bool -> 'y'/'n' conversion."""
+    cached_true = _make_cached(added_full=True)
+    cached_false = _make_cached(added_full=False)
+    cached_none = _make_cached(added_full=None)
+
+    assert map_sm_to_se(cached_true, {})["full_unused"] == "y"
+    assert map_sm_to_se(cached_false, {})["full_unused"] == "n"
+    assert map_sm_to_se(cached_none, {})["full_unused"] == ""
+
+
+def test_map_sm_to_se_optional_fields():
+    """Verify stock and td are only included when not None."""
+    cached_with = _make_cached(stock=5, td=12.5)
+    cached_without = _make_cached(stock=None, td=None)
+
+    payload_with = map_sm_to_se(cached_with, {})
+    assert "stock" in payload_with
+    assert payload_with["stock"] == 5
+    assert "td" in payload_with
+    assert payload_with["td"] == 12.5
+
+    payload_without = map_sm_to_se(cached_without, {})
+    assert "stock" not in payload_without
+    assert "td" not in payload_without

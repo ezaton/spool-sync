@@ -17,6 +17,7 @@ import logging
 
 import httpx
 
+from .mapper import map_sm_to_se
 from .models import SpoolRecord
 
 log = logging.getLogger("spoolsync.spoolease")
@@ -92,37 +93,8 @@ class SpooleaseClient:
             log.warning("cannot write to SpoolEase record %s: record not found", record_id)
             return False
 
-        # Build complete payload with Spoolman changes merged
-        # Format matches AddOrEditSpoolRequest from SpoolEaseConsole.cs
-        payload = {
-            "id": record_id,
-            "tag_id": current["tag_id"] or "",
-            "rgba": current["color_code"] or "",
-            "color_name": current["color_name"] or "",
-            "material": current["material_type"] or "",
-            "subtype": current["material_subtype"] or "",
-            "brand": current["brand"] or "",
-            "core_weight": current["weight_core"] or 0,
-            "label_weight": current["weight_advertised"] or 0,
-            "note": current["note"] or "",
-            "slicer_filament": current["slicer_filament"] or "",
-            "full_unused": "y" if current["added_full"] else ("n" if current["added_full"] is False else ""),
-            "assigned_location": current["assigned_location"] or "",
-            "actual_location": current["actual_location"] or "",
-            "spools_count": current["spools_count"] or 1,
-        }
-
-        # Optional fields - only include if they have values
-        if current["stock"] is not None:
-            payload["stock"] = current["stock"]
-        if current["td"] is not None:
-            payload["td"] = current["td"]
-
-        # Merge Spoolman updates (only the fields Spoolman owns)
-        if "location" in updates and updates["location"] is not None:
-            payload["actual_location"] = updates["location"]
-        if "comment" in updates and updates["comment"] is not None:
-            payload["note"] = updates["comment"]
+        # Build DTO using pure mapper function (Phase C refactor)
+        payload = map_sm_to_se(current, updates)
 
         try:
             log.info("writing back to SpoolEase record %s with merged updates", record_id)

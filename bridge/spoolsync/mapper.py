@@ -356,3 +356,53 @@ def _json_str(value: str) -> str:
     import json
 
     return json.dumps(value)
+
+# ---------------------------------------------------------------------------
+# Phase C: map_sm_to_se() — Spoolman spool -> SpoolEase DTO
+# ---------------------------------------------------------------------------
+
+def map_sm_to_se(cached_spoolease: dict, updates: dict) -> dict:
+    """Convert a cached SpoolEase record + Spoolman-owned updates into a SpoolEase DTO.
+
+    The DTO shape matches AddOrEditSpoolRequest for POST /api/spools/add-edit.
+    Spoolman-owned fields (location, comment) come from `updates`.
+    All other fields come from `cached_spoolease`.
+
+    Args:
+        cached_spoolease: Dict from SpooleaseClient.get_spool_by_id() containing
+            all SpoolEase fields for the record.
+        updates: Dict of Spoolman-owned fields to write back. Currently contains
+            'location' (-> actual_location) and/or 'comment' (-> note).
+
+    Returns:
+        DTO dict ready for POST to SpoolEase.
+    """
+    return {
+        "id": cached_spoolease.get("id") or "",
+        "tag_id": cached_spoolease.get("tag_id") or "",
+        "rgba": cached_spoolease.get("color_code") or "",
+        "color_name": cached_spoolease.get("color_name") or "",
+        "material": cached_spoolease.get("material_type") or "",
+        "subtype": cached_spoolease.get("material_subtype") or "",
+        "brand": cached_spoolease.get("brand") or "",
+        "core_weight": cached_spoolease.get("weight_core") or 0,
+        "label_weight": cached_spoolease.get("weight_advertised") or 0,
+        "note": updates.get("comment") or "",
+        "slicer_filament": cached_spoolease.get("slicer_filament") or "",
+        "full_unused": "y" if cached_spoolease.get("added_full") else (
+            "n" if cached_spoolease.get("added_full") is False else ""),
+        "assigned_location": cached_spoolease.get("assigned_location") or "",
+        "actual_location": updates.get("location") or "",
+        "spools_count": cached_spoolease.get("spools_count") or 1,
+        # Optional fields — only included if they have values
+        **(
+            {"stock": cached_spoolease["stock"]}
+            if cached_spoolease.get("stock") is not None
+            else {}
+        ),
+        **(
+            {"td": cached_spoolease["td"]}
+            if cached_spoolease.get("td") is not None
+            else {}
+        ),
+    }
