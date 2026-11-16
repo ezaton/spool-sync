@@ -4,7 +4,7 @@
 🟢 **Phase A Complete** — Temperature mapping implemented and verified  
 🟢 **Phase B Complete** — Startup sequence with queue drain implemented  
 🟢 **Phase C Complete** — `map_sm_to_se()` mapper function implemented  
-🔵 **Phase D Planned** — Phase 2 tests
+🟢 **Phase D Complete** — Phase 2 tests for echo suppression and handle_spoolman_event()
 
 ---
 
@@ -160,25 +160,45 @@ def map_sm_to_se(cached_spoolease: dict, updates: dict) -> dict:
 
 ---
 
-## Phase D: Phase 2 Tests 🔵 PLANNED
+## Phase D: Phase 2 Tests ✅ COMPLETE
 
-### Current State
-Only `tests/test_mapper.py` exists (for phase 1 mapping functions). No tests for:
-- `write_record()` DTO construction
-- `handle_spoolman_event()` event processing
-- Echo suppression logic
-- The startup sequence
+### What Was Done
+Created comprehensive unit tests for Phase 2 functionality: echo suppression and
+`handle_spoolman_event()` event processing. All 43 tests pass (68 total with pre-existing suite).
 
-### Implementation Plan
-- Add `tests/test_reconcile_sm_to_se.py` — unit tests for event handling, echo suppression
-- Add `tests/test_echo_suppression.py` — unit tests for the shadow store's echo logic
-- Add `tests/test_write_record.py` — unit tests for DTO construction
-- Keep `tests/test_mapper.py` as the fast guardrail for pure mapping functions
+### Test Files Created
 
-### Files to Create
-- `bridge/tests/test_reconcile_sm_to_se.py`
-- `bridge/tests/test_echo_suppression.py`
-- `bridge/tests/test_write_record.py`
+#### `tests/test_echo_suppression.py` — 29 tests
+Covers the `State` class echo suppression methods:
+- **`TestEchoSuppressionSpoolman`** (8 tests): `record_write_to_spoolman()` + `is_echo_from_spoolman()`
+  - Echo detected with matching content
+  - Not suppressed with different content/comment
+  - Unknown spool IDs ignored
+  - Time window expiration (30s default + custom 5s window)
+  - Key-only-in-current vs absent-from-both behavior
+- **`TestEchoSuppressionSpoolease`** (5 tests): `record_write_to_spoolease()` + `is_echo_from_spoolease()`
+  - Cross-direction isolation (Spoolman writes don't trigger SpoolEase echo detection and vice versa)
+- **`TestContentMatches`** (16 tests): `_content_matches()` internal logic
+  - All tracked fields: location, comment, price, archived, remaining_weight
+  - Edge cases: empty dicts, extra keys, None vs empty string
+
+#### `tests/test_reconcile_sm_to_se.py` — 16 tests
+Covers `handle_spoolman_event()` async function with mock dependencies:
+- **Resource filtering** (3 tests): non-spool events, missing resource, missing ID
+- **Echo suppression** (2 tests): echo suppressed vs. non-echo proceeds
+- **Mapping resolution** (2 tests): no mapping skips write, mapping lookup called
+- **Field extraction** (4 tests): location, comment, both together, None values
+- **Write-back** (3 tests): correct SpoolEase ID, success records echo, failure doesn't
+- **Dry-run** (2 tests): skips write, still resolves mapping
+
+### Python 3.14 Compatibility Fix
+All async tests use `asyncio.run()` instead of the deprecated
+`asyncio.get_event_loop().run_until_complete()` pattern required for Python 3.10+.
+
+### Verification
+- All 43 Phase D tests pass
+- Full test suite: 68 pass, 1 pre-existing failure (unrelated mapper identity test)
+- No regressions in existing tests
 
 ---
 
@@ -199,7 +219,7 @@ The current implementation writes `location` → `actual_location` and `comment`
 | Temperature mapping | Enhancement | Medium | ✅ **COMPLETE** |
 | Startup sequence with queue drain | Gap | High | ✅ **COMPLETE** |
 | `map_sm_to_se()` mapper function | Gap | Medium | ✅ **COMPLETE** |
-| Phase 2 tests | Gap | Medium | 🔵 PLANNED |
+| Phase 2 tests | Gap | Medium | ✅ **COMPLETE** |
 | Shadow store schema | Gap | Low | ✅ Kept as-is |
 | Location/Comment write-back | Gap | Low | ✅ Kept as-is |
 
