@@ -233,3 +233,11 @@ class SpoolmanClient:
         except httpx.HTTPError as e:
             log.warning("failed to fetch spool %d: %s", spool_id, e)
             return None
+
+    def get_all_spools(self) -> list[dict]:
+        """Fetch all spools from Spoolman (including archived)."""
+        try:
+            return self._get("/spool").json()
+        except httpx.HTTPError as e:
+            log.error("failed to fetch all spools: %s", e)
+            return []
