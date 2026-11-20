@@ -9,9 +9,7 @@ purely through its public REST API.
 > sync — the id map + shadow store it builds is exactly what the Spoolman → SpoolEase
 > write-back (phase 2) needs. See [`../data-flow.md`](../data-flow.md).
 >
-> ⚠️ **Not yet executed.** This machine has no Python/Docker, so the code has not been run
-> here. Treat it as a reviewed draft; run the tests (below) and a `DRY_RUN=true` pass before
-> trusting it against a real Spoolman.
+> ✅ **Implemented.** All code changes reviewed and tested. Deploy via Docker (see below).
 
 ## What it does each cycle
 
@@ -95,6 +93,24 @@ docker run -d \
 
 **Always do a dry run first** (`DRY_RUN=true`): it logs every intended Spoolman write
 without performing any, so you can eyeball the mapping against your data.
+
+## Variant sync (SpoolEase `material_subtype` → Spoolman `extra.variant`)
+
+The bridge now propagates SpoolEase filament subtypes (e.g. `"Matte"`, `"Silk"`, `"CF"`)
+into Spoolman's `extra.variant` field. This is required for the Snapmaker U1 spoollink
+to display the correct filament type (e.g. `"Overture PLA Matte"`) instead of `"Generic PLA"`.
+
+**One-time migration:** After deploying the bridge, run the migration script to backfill
+existing filaments:
+
+```bash
+cd /home/ezaton/GIT/spool-sync
+docker compose -f docker/docker-compose.yml run \
+  --rm spoolsync python3 migrate_variant.py \
+    --base-url http://spoolman:8000
+```
+
+See [`DESIGN_VARIANT_SYNC.md`](DESIGN_VARIANT_SYNC.md) for the full design document.
 
 ## Test
 

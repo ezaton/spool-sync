@@ -39,6 +39,7 @@ def run(cfg: Config) -> None:
     stop = _Stop()
     try:
         sm.ensure_spoolease_id_field()
+        sm.ensure_variant_field()  # variant custom field for filaments
         density_map = sm.external_material_densities()
         log.info("loaded %d material densities from Spoolman external DB", len(density_map))
 

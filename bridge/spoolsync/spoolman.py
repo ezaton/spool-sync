@@ -68,6 +68,20 @@ class SpoolmanClient:
         except httpx.HTTPStatusError as e:  # already exists / validation — non-fatal
             log.debug("ensure spoolease_id field: %s", e)
 
+    def ensure_variant_field(self) -> None:
+        """Register the `variant` extra field on filaments (idempotent).
+
+        This is the same pattern as ensure_spoolease_id_field() but for the
+        filament entity's variant custom field. The field is already created
+        by spoollink on first connection, but this ensures idempotent
+        registration from the bridge side too.
+        """
+        body = {"name": "Variant", "field_type": "text", "order": 1}
+        try:
+            self._write("POST", "/field/filament/variant", body)
+        except httpx.HTTPStatusError as e:  # already exists / validation — non-fatal
+            log.debug("ensure variant field: %s", e)
+
     # --- Vendor ---
     def upsert_vendor(self, spec: VendorSpec) -> int | None:
         existing = self._get("/vendor", external_id=spec.external_id).json()
@@ -101,6 +115,11 @@ class SpoolmanClient:
             "settings_bed_temp": spec.settings_bed_temp,
         }
         body = {k: v for k, v in body.items() if v is not None}
+
+        # Include extra fields (variant, etc.) if present
+        if spec.extra:
+            body["extra"] = spec.extra
+
         if existing:
             fid = existing[0]["id"]
             self._write("PATCH", f"/filament/{fid}", body)

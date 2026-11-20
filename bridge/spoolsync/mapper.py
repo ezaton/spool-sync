@@ -8,7 +8,7 @@ The weight logic follows the semantics confirmed in SpoolEase/core/src/view_mode
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .models import SpoolRecord
 
@@ -33,6 +33,7 @@ class FilamentSpec:
     article_number: str | None
     settings_extruder_temp: int | None
     settings_bed_temp: int | None
+    extra: dict[str, str] = field(default_factory=dict)  # NEW
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,20 @@ def map_material(rec: SpoolRecord) -> str | None:
     # into the filament name. See open question #3 in ../data-mapping.md — flip here if you
     # prefer subtype in material.
     return rec.material_type.strip() or None
+
+
+def map_variant(rec: SpoolRecord) -> str | None:
+    """Extract the variant/subtype from a SpoolEase record.
+
+    Returns the material_subtype as-is if non-empty, else None.
+
+    Examples:
+        material_subtype="Matte" → "Matte"
+        material_subtype="Silk"  → "Silk"
+        material_subtype=""      → None
+    """
+    subtype = rec.material_subtype.strip()
+    return subtype if subtype else None
 
 
 def map_filament_name(rec: SpoolRecord) -> str | None:
@@ -277,6 +292,11 @@ def map_extruder_temp(rec: SpoolRecord, default: int = 215) -> int | None:
 
 def map_filament(rec: SpoolRecord, *, density: float, diameter: float,
                  default_extruder_temp: int = 215) -> FilamentSpec:
+    variant = map_variant(rec)
+    extra: dict[str, str] = {}
+    if variant is not None:
+        extra["variant"] = _json_str(variant)  # Spoolman JSON-encodes string values
+
     return FilamentSpec(
         external_id=filament_external_id(rec),
         name=map_filament_name(rec),
@@ -289,6 +309,7 @@ def map_filament(rec: SpoolRecord, *, density: float, diameter: float,
         article_number=rec.slicer_filament.strip() or None,
         settings_extruder_temp=map_extruder_temp(rec, default=default_extruder_temp),
         settings_bed_temp=None,  # SpoolEase does not track bed temperatures
+        extra=extra,
     )
 
 

@@ -68,6 +68,7 @@ async def run_twoway(cfg: Config) -> None:
     try:
         # Initialize
         sm.ensure_spoolease_id_field()
+        sm.ensure_variant_field()  # variant custom field for filaments
         density_map = sm.external_material_densities()
         log.info("loaded %d material densities from Spoolman external DB", len(density_map))
 

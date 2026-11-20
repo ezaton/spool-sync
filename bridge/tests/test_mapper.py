@@ -19,6 +19,7 @@ from spoolsync.mapper import (
     map_filament,
     map_spool,
     map_vendor,
+    map_variant,
     vendor_external_id,
 )
 from spoolsync.models import SpoolRecord  # noqa: E402
@@ -272,3 +273,38 @@ def test_map_sm_to_se_optional_fields():
     payload_without = map_sm_to_se(cached_without, {})
     assert "stock" not in payload_without
     assert "td" not in payload_without
+
+
+# --- Variant mapping tests ---
+
+def test_map_variant_returns_subtype_when_present():
+    rec = SpoolRecord(id="v1", material_subtype="Matte")
+    assert map_variant(rec) == "Matte"
+
+
+def test_map_variant_returns_none_for_empty_subtype():
+    rec = SpoolRecord(id="v2", material_subtype="")
+    assert map_variant(rec) is None
+
+
+def test_map_variant_trims_whitespace():
+    rec = SpoolRecord(id="v3", material_subtype="  Silk  ")
+    assert map_variant(rec) == "Silk"
+
+
+def test_map_filament_includes_variant_in_extra():
+    rec = SpoolRecord(id="f1", brand="Overture", material_type="PLA",
+                      material_subtype="Matte", color_name="Black",
+                      color_code="#000000", weight_advertised=1000,
+                      weight_core=250)
+    f = map_filament(rec, density=1.24, diameter=1.75)
+    assert f.extra == {"variant": '"Matte"'}
+
+
+def test_map_filament_no_variant_when_empty():
+    rec = SpoolRecord(id="f2", brand="Generic", material_type="PLA",
+                      material_subtype="", color_name="White",
+                      color_code="#FFFFFF", weight_advertised=1000,
+                      weight_core=200)
+    f = map_filament(rec, density=1.24, diameter=1.75)
+    assert f.extra == {}
