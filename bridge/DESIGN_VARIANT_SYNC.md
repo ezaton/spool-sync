@@ -84,14 +84,12 @@ to Spoolman's `extra.variant` field on the filament entity.
 |------|---------|
 | `spoolsync/mapper.py` | Add `extra` field to `FilamentSpec`; add `map_variant()` function; update `map_filament()` to set `extra.variant` |
 | `spoolsync/spoolman.py` | Update `upsert_filament()` to include `extra.variant` in PATCH/POST body; add `ensure_variant_field()` method |
-| `spoolsync/sync.py` | Add `ensure_variant_field()` call alongside existing `ensure_spoolease_id_field()` |
-| `spoolsync/sync_twoway.py` | Add `ensure_variant_field()` call alongside existing `ensure_spoolease_id_field()` |
+| `spoolsync/sync.py` | Add `ensure_variant_field()` call at startup; add migration step before main loop (when `MIGRATION=true`) |
+| `spoolsync/sync_twoway.py` | Add `ensure_variant_field()` call at startup; add migration step before startup sequence (when `MIGRATION=true`) |
 | `tests/test_mapper.py` | Add tests for `map_variant()` and updated `map_filament()` |
 | `spoolsync/migrate_variant.py` | **New file** — one-time migration script for backfilling existing filaments (moved into package for import) |
-| `Dockerfile` | No standalone COPY needed — `migrate_variant.py` is inside `spoolsync/` package |
 | `spoolsync/config.py` | Add `migration: bool` field + `MIGRATION` env var parsing |
-| `spoolsync/sync.py` | Add migration step before main loop (when `MIGRATION=true`) |
-| `spoolsync/sync_twoway.py` | Add migration step before startup sequence (when `MIGRATION=true`) |
+| `Dockerfile` | No standalone COPY needed — `migrate_variant.py` is inside `spoolsync/` package |
 
 ---
 

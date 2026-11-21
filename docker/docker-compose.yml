@@ -124,6 +124,11 @@ services:
       # Python log level. Set to DEBUG for per-record audit logging.
       LOG_LEVEL: INFO
 
+      # ── One-time variant migration ──
+      # Set to "true" to backfill extra.variant on existing filaments at
+      # startup. Remove or set to "false" after first successful run.
+      # MIGRATION: "false"
+
     volumes:
       # Persist sync state across restarts.
       - spoolsync-state:/state
