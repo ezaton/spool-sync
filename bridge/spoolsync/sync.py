@@ -43,6 +43,20 @@ def run(cfg: Config) -> None:
         density_map = sm.external_material_densities()
         log.info("loaded %d material densities from Spoolman external DB", len(density_map))
 
+        # --- Migration phase (optional, one-time) ---
+        if cfg.migration:
+            base_url = cfg.spoolman_url.removesuffix("/api/v1")
+            log.info("running variant migration (pre-startup)")
+            from .migrate_variant import migrate_filaments
+            migrated, skipped, errors = migrate_filaments(
+                base_url=base_url,
+                dry_run=cfg.dry_run,
+            )
+            log.info("variant migration complete: migrated=%d, skipped=%d, errors=%d",
+                     migrated, skipped, errors)
+            if errors > 0:
+                log.warning("migration had %d errors — continuing anyway", errors)
+
         while not stop.flag:
             t0 = time.monotonic()
             try:

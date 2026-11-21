@@ -64,6 +64,7 @@ class Config:
     log_level: str
     verbose: bool  # shortcut for LOG_LEVEL=DEBUG (per-record audit logging)
     two_way_sync: bool  # Phase 2: enable Spoolman → SpoolEase write-back via websocket
+    migration: bool  # Run one-time variant migration at startup
 
     @staticmethod
     def from_env() -> "Config":
@@ -99,4 +100,5 @@ class Config:
             log_level=log_level,
             verbose=verbose,
             two_way_sync=_get_bool("TWO_WAY_SYNC", False),  # Phase 2: disabled by default
+            migration=_get_bool("MIGRATION", False),  # One-time variant migration at startup
         )
