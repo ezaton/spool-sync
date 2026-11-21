@@ -100,17 +100,11 @@ The bridge now propagates SpoolEase filament subtypes (e.g. `"Matte"`, `"Silk"`,
 into Spoolman's `extra.variant` field. This is required for the Snapmaker U1 spoollink
 to display the correct filament type (e.g. `"Overture PLA Matte"`) instead of `"Generic PLA"`.
 
-**One-time migration:** After deploying the bridge, run the migration script to backfill
-existing filaments:
-
-```bash
-cd /home/ezaton/GIT/spool-sync
-docker compose -f docker/docker-compose.yml run \
-  --rm spoolsync python3 migrate_variant.py \
-    --base-url http://spoolman:8000
-```
-
-See [`DESIGN_VARIANT_SYNC.md`](DESIGN_VARIANT_SYNC.md) for the full design document.
+**One-time migration:** After deploying the bridge, set `MIGRATION=true` in the
+container's environment and restart. The migration runs automatically at startup,
+backfilling `extra.variant` for all existing filaments. After completion, set
+`MIGRATION=false` (or remove the variable). See
+[`DESIGN_VARIANT_SYNC.md`](DESIGN_VARIANT_SYNC.md) for the full design document.
 
 ## Test
 

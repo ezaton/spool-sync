@@ -87,8 +87,11 @@ to Spoolman's `extra.variant` field on the filament entity.
 | `spoolsync/sync.py` | Add `ensure_variant_field()` call alongside existing `ensure_spoolease_id_field()` |
 | `spoolsync/sync_twoway.py` | Add `ensure_variant_field()` call alongside existing `ensure_spoolease_id_field()` |
 | `tests/test_mapper.py` | Add tests for `map_variant()` and updated `map_filament()` |
-| `migrate_variant.py` | **New file** — one-time migration script for backfilling existing filaments |
-| `Dockerfile` | Add `COPY migrate_variant.py .` so the script is available in the container |
+| `spoolsync/migrate_variant.py` | **New file** — one-time migration script for backfilling existing filaments (moved into package for import) |
+| `Dockerfile` | No standalone COPY needed — `migrate_variant.py` is inside `spoolsync/` package |
+| `spoolsync/config.py` | Add `migration: bool` field + `MIGRATION` env var parsing |
+| `spoolsync/sync.py` | Add migration step before main loop (when `MIGRATION=true`) |
+| `spoolsync/sync_twoway.py` | Add migration step before startup sequence (when `MIGRATION=true`) |
 
 ---
 
@@ -308,10 +311,20 @@ records as `"unchanged"`.
 
 ### 4.2 Backfill Strategy
 
-**Primary mechanism: Containerized migration script** (`migrate_variant.py`)
+**Primary mechanism: Startup-embedded migration** (`MIGRATION=true`)
 
-A one-time container run that populates `extra.variant` for all existing
-filaments. See Section 7 for execution instructions.
+Set the `MIGRATION=true` environment variable on the spoolsync container and
+restart. The migration runs automatically at startup (before the websocket
+listener starts), backfilling `extra.variant` for all existing filaments.
+After completion, set `MIGRATION=false` (or remove the variable).
+
+**Standalone fallback:** The migration script can still be run as a standalone
+container if needed:
+```bash
+docker compose -f docker/docker-compose.yml run \
+  --rm spoolsync python3 -m spoolsync.migrate_variant \
+    --base-url http://spoolman:8000
+```
 
 **Secondary mechanism: Reconcile loop for new/changed records**
 
@@ -470,10 +483,10 @@ After deploying the fix:
 
 ---
 
-## 7. Rollout Plan — Containerized Execution
+## 7. Rollout Plan — Startup-Embedded Migration
 
-The spool-sync bridge runs as a Docker container with no shell access. All
-migration steps must be executed via `docker compose` or `docker exec`.
+The spool-sync bridge runs as a Docker container. The migration is now embedded
+in the startup sequence and triggered via the `MIGRATION` environment variable.
 
 ### Step 1: Deploy Bridge Fix (Day 1)
 
@@ -488,47 +501,40 @@ docker compose -f docker/docker-compose.yml up -d --build spoolsync
 This starts the bridge with the new variant mapping. The first reconcile pass
 will include `extra.variant` for any new or changed SpoolEase records.
 
-### Step 2: Run Migration Script (Day 1, REQUIRED)
+### Step 2: Run Migration at Startup (Day 1, REQUIRED)
 
-The migration script runs as a **one-shot container** that connects to Spoolman
-and patches all filaments with empty `extra.variant`. It is a separate,
-short-lived container — the main spoolsync container continues running
-normally.
-
-**2a. Dry run (preview):**
+Set `MIGRATION=true` in the spoolsync service environment and restart. The
+migration runs automatically at startup (before the websocket listener starts),
+backfilling `extra.variant` for all existing filaments.
 
 ```bash
-docker compose -f docker/docker-compose.yml run \
-  --rm \
-  spoolsync python3 migrate_variant.py \
-    --base-url http://spoolman:8000 --dry-run
+# Add MIGRATION=true to docker-compose.yml (or environment file):
+#   spoolsync:
+#     environment:
+#       MIGRATION: "true"
+#
+# Then restart:
+docker compose -f docker/docker-compose.yml up -d spoolsync
 ```
 
-**2b. Apply changes:**
-
+**Verify:** Check logs for migration output:
 ```bash
-docker compose -f docker/docker-compose.yml run \
-  --rm \
-  spoolsync python3 migrate_variant.py \
-    --base-url http://spoolman:8000
+docker logs spoolman-spoolsync-1 2>&1 | grep -i "variant migration"
+# Should show: "running variant migration", "variant migration complete: migrated=XX, skipped=YY, errors=ZZ"
 ```
 
-**2c. Verify:**
+**After completion**, set `MIGRATION=false` (or remove the variable) to prevent
+re-running on every restart:
+```bash
+# Update docker-compose.yml to set MIGRATION: "false" or remove it
+docker compose -f docker/docker-compose.yml up -d spoolsync
+```
 
+**Verify filaments:**
 ```bash
 # Check a specific filament
 curl http://block:7912/api/v1/filament/42 | python3 -m json.tool
 # Should show: "extra": { "variant": "\"Matte\"" }
-```
-
-**2d. Test a single filament first (optional):**
-
-```bash
-docker compose -f docker/docker-compose.yml run \
-  --rm \
-  spoolsync python3 migrate_variant.py \
-    --base-url http://spoolman:8000 \
-    --filament-id 42
 ```
 
 ### Step 3: Verify End-to-End (Day 2)
@@ -542,19 +548,24 @@ curl http://block:7912/api/v1/filament/NEW_ID | python3 -m json.tool
 # 5. Verify snorca shows correct filament name with subtype
 ```
 
-### Container Architecture Note
+### Standalone Migration (Fallback)
 
-The migration script is a **standalone Python script** (not a separate container
-image). It runs inside the existing `spoolsync` service container using
-`docker compose run --rm`, which:
-- Spins up a one-shot container from the spoolsync image
-- Runs the script with the `--base-url` CLI argument (no env vars needed)
-- Automatically removes the container after completion (`--rm`)
-- Does **not** interfere with the main spoolsync container
+The migration script can still be run as a standalone container if needed:
+```bash
+docker compose -f docker/docker-compose.yml run \
+  --rm spoolsync python3 -m spoolsync.migrate_variant \
+    --base-url http://spoolman:8000
+```
 
-A single `COPY migrate_variant.py .` line was added to the `Dockerfile` so the
-script is available inside the container at runtime. No changes to
-`docker-compose.yml` are needed.
+### Container Architecture
+
+The migration code lives in `spoolsync/migrate_variant.py` (inside the package).
+The `Dockerfile` copies the entire `spoolsync` package via `COPY spoolsync ./spoolsync`,
+which includes `migrate_variant.py`. No standalone `COPY` line is needed.
+
+The migration runs synchronously at bridge startup (before the websocket listener
+starts). It connects to Spoolman via HTTP, patches all filaments with empty
+`extra.variant`, then the bridge continues normal operation.
 
 ---
 
@@ -610,9 +621,9 @@ script is available inside the container at runtime. No changes to
 │  sync.py / sync_twoway.py:                                          │
 │    sm.ensure_variant_field() at startup                              │
 │                                                                      │
-│  migrate_variant.py (one-shot, run once):                            │
-│    docker compose run --rm spoolsync python3 migrate_variant.py     │
-│    → PATCH /api/v1/filament/{id} extra.variant for all existing     │
+│  MIGRATION=true → migration at startup:                               │
+│    migrate_variant.migrate_filaments() → PATCH extra.variant for all  │
+│    existing filaments (before websocket listener starts)              │
 └────────────────────────────┬────────────────────────────────────────┘
                              │ REST API
                              ▼
