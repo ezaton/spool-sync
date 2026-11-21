@@ -135,62 +135,61 @@ def migrate_filaments(base_url: str, dry_run: bool = False,
         (migrated, skipped, errors) counts
     """
     base = base_url.rstrip("/")
-    http = httpx.Client(
+    with httpx.Client(
         base_url=base,
         timeout=30.0,
         headers={"Content-Type": "application/json"},
-    )
-
-    # Fetch filaments
-    if filament_id is not None:
-        resp = http.get(f"/api/v1/filament/{filament_id}")
-        resp.raise_for_status()
-        filaments = [resp.json()]
-    else:
-        resp = http.get("/api/v1/filament")
-        resp.raise_for_status()
-        filaments = resp.json()
-
-    migrated = 0
-    skipped = 0
-    errors = 0
-
-    for f in filaments:
-        fid = f["id"]
-        name = f.get("name", "")
-        material = f.get("material", "")
-        extra = f.get("extra", {})
-
-        # Skip if variant already set
-        if extra.get("variant"):
-            skipped += 1
-            continue
-
-        # Extract variant from name
-        variant = parse_variant_from_name(name)
-        if not variant:
-            skipped += 1
-            continue
-
-        # Build the PATCH body
-        body = {"extra": {"variant": json.dumps(variant)}}
-
-        if dry_run:
-            print(f"  [DRY-RUN] Would update filament {fid}: '{name}' ({material}) → variant='{variant}'")
-            migrated += 1  # Count as "would migrate"
-            continue
-
-        # Write variant
-        try:
-            resp = http.patch(f"/api/v1/filament/{fid}", json=body)
+    ) as http:
+        # Fetch filaments
+        if filament_id is not None:
+            resp = http.get(f"/api/v1/filament/{filament_id}")
             resp.raise_for_status()
-            migrated += 1
-            print(f"  Migrated filament {fid}: '{name}' ({material}) → variant='{variant}'")
-        except Exception as e:
-            errors += 1
-            print(f"  ERROR migrating filament {fid}: {e}", file=sys.stderr)
+            filaments = [resp.json()]
+        else:
+            resp = http.get("/api/v1/filament")
+            resp.raise_for_status()
+            filaments = resp.json()
 
-    return migrated, skipped, errors
+        migrated = 0
+        skipped = 0
+        errors = 0
+
+        for f in filaments:
+            fid = f["id"]
+            name = f.get("name", "")
+            material = f.get("material", "")
+            extra = f.get("extra", {})
+
+            # Skip if variant already set
+            if extra.get("variant"):
+                skipped += 1
+                continue
+
+            # Extract variant from name
+            variant = parse_variant_from_name(name)
+            if not variant:
+                skipped += 1
+                continue
+
+            # Build the PATCH body
+            body = {"extra": {"variant": json.dumps(variant)}}
+
+            if dry_run:
+                print(f"  [DRY-RUN] Would update filament {fid}: '{name}' ({material}) → variant='{variant}'")
+                migrated += 1  # Count as "would migrate"
+                continue
+
+            # Write variant
+            try:
+                resp = http.patch(f"/api/v1/filament/{fid}", json=body)
+                resp.raise_for_status()
+                migrated += 1
+                print(f"  Migrated filament {fid}: '{name}' ({material}) → variant='{variant}'")
+            except Exception as e:
+                errors += 1
+                print(f"  ERROR migrating filament {fid}: {e}", file=sys.stderr)
+
+        return migrated, skipped, errors
 
 
 def main():
